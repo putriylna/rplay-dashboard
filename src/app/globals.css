@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+@theme {
+  /* Mendaftarkan variable font agar bisa digunakan di utility class */
+  --font-anton: var(--font-anton);
+  --font-montserrat: var(--font-montserrat);
+
+  /* Mendaftarkan warna custom jika ingin menggunakan nama selain zinc */
+  --color-primary: #cc111f;
+  --color-secondary: #121212;
+}
+
+/* Base Style */
+@layer base {
+  body {
+    @apply bg-black text-white font-[family-name:var(--font-montserrat)];
+  }
+}
+
+/* Custom Components */
+@layer components {
+  /* Input Styling ala RPlay */
+  .admin-input {
+    /* Gunakan warna zinc langsung atau primary */
+    @apply w-full bg-zinc-900 border border-zinc-800 p-3 rounded-lg 
+           text-white outline-none transition-all;
+    @apply focus:ring-1 focus:ring-[#cc111f] focus:border-[#cc111f];
+  }
+
+  /* Card Glassmorphism */
+  .glass-card {
+    @apply bg-[#121212] border border-zinc-800 rounded-xl overflow-hidden;
+  }
+
+  .font-anton {
+    @apply font-[family-name:var(--font-anton)];
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #cc111f;
+}
+
+.admin-input-modern {
+  width: 100%;
+  background: #111;
+  border: 1px solid #1f1f23;
+  border-radius: 1rem;
+  padding: 0.75rem 1rem;
+  color: white;
+  outline: none;
+  transition: all 0.2s ease;
+}
+.admin-input-modern:focus {
+  border-color: #cc111f;
+}
+.modal-scale-animation {
+  animation: modal-zoom 0.2s ease-out;
+}
+@keyframes modal-zoom {
+  from {
+    transform: scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

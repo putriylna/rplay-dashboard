@@ -3,15 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbo",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "next lint"
   },
   "dependencies": {
+    "@elysiajs/cors": "^1.4.1",
+    "@elysiajs/eden": "^1.4.8",
+    "@heroicons/react": "^2.2.0",
+    "clsx": "^2.1.1",
     "next": "16.1.6",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "react-hot-toast": "^2.6.0",
+    "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -20,6 +26,8 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "prettier": "^3.8.1",
+    "prettier-plugin-tailwindcss": "^0.7.2",
     "tailwindcss": "^4",
     "typescript": "^5"
   },
