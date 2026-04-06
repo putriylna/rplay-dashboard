@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { anton } from "@/lib/fonts";
 import {
   PlusIcon,
@@ -13,36 +13,50 @@ import {
   MagnifyingGlassIcon,
   ClockIcon,
   TagIcon,
-  CalendarIcon, // Icon tambahan untuk tanggal
+  FunnelIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/outline";
 import { movieService } from "@/services/movieService";
 import CastModal from "@/components/dashboard/CastModal";
 import { Movie, Actor } from "@/types";
 
+const ITEMS_PER_PAGE = 8;
+const GENRES = ["Action", "Horror", "Comedy", "Drama", "Sci-Fi", "Animation", "Thriller"];
+
 export default function MoviesPage() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [actors, setActors] = useState<Actor[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
   const [mounted, setMounted] = useState(false);
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [selectedGenre, setSelectedGenre] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCastModalOpen, setIsCastModalOpen] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
 
-  // 1. UPDATE STATE FORM (Tambah release_date & end_date)
   const [movieForm, setMovieForm] = useState({
     title: "",
     synopsis: "",
     duration: 0,
     genre: "Action",
     rating_age: "SU",
-    release_date: "", // Tambahan
-    end_date: "",    // Tambahan
+    release_date: "",
+    end_date: "",
     photo_url: "",
     trailer_url: "",
     is_playing: true,
   });
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   useEffect(() => {
     setMounted(true);
@@ -59,19 +73,38 @@ export default function MoviesPage() {
       setMovies(Array.isArray(m) ? m : []);
       setActors(Array.isArray(a) ? a : []);
     } catch (err) {
-      console.error(err);
+      console.error("fetch error:", err);
     } finally {
       setLoading(false);
     }
   };
 
   const filteredMovies = useMemo(() => {
-    return movies.filter((m) =>
-      (m?.title || "").toLowerCase().includes(searchTerm.toLowerCase()),
-    );
-  }, [movies, searchTerm]);
+    return movies.filter((m) => {
+      const title = m.title || "";
+      const matchesSearch = title.toLowerCase().includes(debouncedSearch.toLowerCase());
+      const matchesGenre = selectedGenre === "All" || m.genre === selectedGenre;
+      
+      let matchesStatus = true;
+      if (statusFilter === "playing") matchesStatus = m.isPlaying === true;
+      if (statusFilter === "upcoming") {
+        matchesStatus = new Date(m.releaseDate) > new Date();
+      }
 
-  // 2. UPDATE HANDLE OPEN (Mapping data dari backend ke form)
+      return matchesSearch && matchesGenre && matchesStatus;
+    });
+  }, [movies, debouncedSearch, selectedGenre, statusFilter]);
+
+  const totalPages = Math.ceil(filteredMovies.length / ITEMS_PER_PAGE);
+  const paginatedMovies = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredMovies.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredMovies, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, selectedGenre, statusFilter]);
+
   const handleOpenMovie = (movie?: Movie) => {
     if (movie) {
       setSelectedMovie(movie);
@@ -81,9 +114,8 @@ export default function MoviesPage() {
         duration: movie.duration,
         genre: movie.genre,
         rating_age: movie.ratingAge,
-        // Pastikan mapping nama properti dari backend (camelCase) ke form (snake_case)
-        release_date: movie.releaseDate || "", 
-        end_date: movie.endDate || "",
+        release_date: movie.releaseDate ? movie.releaseDate.split('T')[0] : "", 
+        end_date: movie.endDate ? movie.endDate.split('T')[0] : "",
         photo_url: movie.photoUrl || "",
         trailer_url: movie.trailerUrl || "",
         is_playing: movie.isPlaying,
@@ -91,56 +123,43 @@ export default function MoviesPage() {
     } else {
       setSelectedMovie(null);
       setMovieForm({
-        title: "",
-        synopsis: "",
-        duration: 0,
-        genre: "Action",
-        rating_age: "SU",
-        release_date: "",
-        end_date: "",
-        photo_url: "",
-        trailer_url: "",
-        is_playing: true,
+        title: "", synopsis: "", duration: 0, genre: "Action",
+        rating_age: "SU", release_date: "", end_date: "",
+        photo_url: "", trailer_url: "", is_playing: true,
       });
     }
     setIsModalOpen(true);
   };
 
-  const handleSaveMovie = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const slug = movieForm.title
-      .toLowerCase()
-      .trim()
-      .replace(/\s+/g, "-")
-      .replace(/[^\w-]+/g, "");
-    
-    try {
-      if (selectedMovie)
-        await movieService.update(selectedMovie.movieId, {
-          ...movieForm,
-          slug,
-        });
-      else await movieService.create({ ...movieForm, slug });
-      
-      setIsModalOpen(false);
-      loadData();
-    } catch (err: any) {
-      alert(err.message || "Gagal menyimpan data film.");
-    }
-  };
-
-  const handleOpenCast = async (movie: Movie) => {
+  // Fungsi untuk membuka modal cast yang sebelumnya hilang
+  const handleOpenCast = (movie: Movie) => {
     setSelectedMovie(movie);
     setIsCastModalOpen(true);
   };
 
+  const handleSaveMovie = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const slug = movieForm.title.toLowerCase().trim().replace(/\s+/g, "-").replace(/[^\w-]+/g, "");
+    try {
+      if (selectedMovie) {
+        await movieService.update(selectedMovie.movieId, { ...movieForm, slug });
+      } else {
+        await movieService.create({ ...movieForm, slug });
+      }
+      setIsModalOpen(false);
+      loadData();
+    } catch (err: any) {
+      alert(err.message || "gagal menyimpan data.");
+    }
+  };
+
   const handleDeleteMovie = async (id: number) => {
-    if (confirm("Hapus film ini secara permanen?")) {
+    if (confirm("hapus film secara permanen?")) {
       try {
         await movieService.delete(id);
         loadData();
       } catch (err) {
-        alert("Gagal menghapus film");
+        alert("gagal menghapus film");
       }
     }
   };
@@ -148,181 +167,248 @@ export default function MoviesPage() {
   if (!mounted) return null;
 
   return (
-    <div className="p-8 space-y-10 animate-in fade-in duration-700 max-w-[1600px] mx-auto">
-      {/* Header Section */}
-      <div className="flex flex-col lg:flex-row justify-between items-center gap-8 border-b border-zinc-800/50 pb-10">
-        <div className="space-y-2 text-center lg:text-left">
-          <h1 className={`${anton.className} text-5xl text-white tracking-tight leading-none uppercase italic`}>
-            Movie Catalog
+    <div className="p-6 lg:p-10 space-y-8 max-w-[1600px] mx-auto text-white">
+      {/* header */}
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 border-b border-zinc-800/50 pb-8">
+        <div className="space-y-1">
+          <h1 className={`${anton.className} text-4xl lg:text-6xl tracking-tight leading-none text-white`}>
+            movie <span className="text-[#cc111f]">catalog</span>
           </h1>
-          <p className="text-zinc-500 text-sm font-medium italic">
-            Kelola daftar film dan aset digital RPlay Cinema
+          <p className="text-zinc-500 text-sm font-medium">
+            menampilkan {filteredMovies.length} film dalam database rplay.
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
-          <div className="relative flex-1 sm:w-80 group">
-            <MagnifyingGlassIcon className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-[#cc111f] transition-colors" />
-            <input
-              type="text"
-              placeholder="Cari judul film..."
-              className="admin-input-modern !pl-12 h-[48px] w-full text-sm font-medium"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
+        <button
+          onClick={() => handleOpenMovie()}
+          className="bg-white hover:bg-[#cc111f] hover:text-white text-black flex items-center justify-center gap-2 px-8 h-[52px] rounded-2xl transition-all shadow-xl active:scale-95 font-bold text-sm tracking-wider"
+        >
+          <PlusIcon className="w-5 h-5 stroke-[3px]" />
+          add movie
+        </button>
+      </div>
 
-          <button
-            onClick={() => handleOpenMovie()}
-            className="bg-white hover:bg-[#cc111f] hover:text-white flex items-center justify-center gap-2 px-6 h-[48px] rounded-xl transition-all shadow-xl active:scale-95 text-black font-bold text-xs"
+      {/* filter bar */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 bg-[#0a0a0a] p-4 rounded-3xl border border-zinc-800/50 shadow-2xl">
+        <div className="relative group">
+          <MagnifyingGlassIcon className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-[#cc111f] transition-colors" />
+          <input
+            type="text"
+            placeholder="search movie title..."
+            className="admin-input-modern !pl-12 w-full h-[48px]"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+
+        <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-800">
+          {["all", "playing", "upcoming"].map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${
+                statusFilter === s ? "bg-[#cc111f] text-white shadow-lg" : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative">
+          <FunnelIcon className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" />
+          <select
+            className="admin-input-modern !pl-10 h-[48px] appearance-none"
+            value={selectedGenre}
+            onChange={(e) => setSelectedGenre(e.target.value)}
           >
-            <PlusIcon className="w-4 h-4 stroke-[3px]" />
-            <span>Add Movie</span>
-          </button>
+            <option value="All">all genres</option>
+            {GENRES.map((g) => <option key={g} value={g}>{g.toLowerCase()}</option>)}
+          </select>
+        </div>
+
+        <div className="hidden xl:flex items-center justify-end px-4 text-zinc-500 text-xs font-bold">
+          page {currentPage} of {totalPages || 1}
         </div>
       </div>
 
-      {/* Grid Content */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
-        {loading
-          ? Array(6).fill(0).map((_, i) => (
-              <div key={i} className="bg-[#0a0a0a] border border-zinc-900 rounded-[2.5rem] p-5 animate-pulse h-[400px]" />
-            ))
-          : filteredMovies.map((movie) => (
-              <div
-                key={movie.movieId}
-                className="group bg-[#0a0a0a] border border-zinc-900 rounded-[2rem] p-5 hover:border-zinc-700 transition-all duration-500 flex flex-col h-full shadow-2xl"
-              >
-                <div className="aspect-[2/3] mb-6 relative overflow-hidden rounded-[1.5rem] bg-zinc-950 border border-zinc-800/50 group-hover:border-[#cc111f]/20 transition-all">
-                  <img
-                    src={movie.photoUrl || "/placeholder.png"}
-                    className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
-                    alt={movie.title}
-                  />
-                  <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-all duration-300 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
+      {/* movie grid */}
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+          {Array(ITEMS_PER_PAGE).fill(0).map((_, i) => (
+            <div key={i} className="bg-[#0a0a0a] border border-zinc-900 rounded-[2rem] p-5 animate-pulse h-[450px]" />
+          ))}
+        </div>
+      ) : paginatedMovies.length === 0 ? (
+        <div className="py-20 text-center flex flex-col items-center gap-4 bg-zinc-900/20 rounded-[3rem] border-2 border-dashed border-zinc-800">
+          <FilmIcon className="w-16 h-16 text-zinc-800" />
+          <p className="text-zinc-500 font-bold tracking-widest">no movies found</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+          {paginatedMovies.map((movie) => (
+            <div
+              key={movie.movieId}
+              className="group bg-[#0a0a0a] border border-zinc-900 rounded-[2rem] p-4 hover:border-zinc-700 transition-all duration-500 flex flex-col h-full shadow-2xl relative overflow-hidden"
+            >
+              <div className="aspect-[2/3] mb-5 relative overflow-hidden rounded-[1.5rem] bg-zinc-950 border border-zinc-800/50">
+                <img
+                  src={movie.photoUrl || "/placeholder.png"}
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                  alt={movie.title}
+                />
+                
+                <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-all duration-300 backdrop-blur-[2px] flex flex-col items-center justify-center gap-3">
+                    <button onClick={() => handleOpenCast(movie)} className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center hover:bg-[#cc111f] hover:text-white transition-all transform hover:scale-110">
+                      <UserGroupIcon className="w-5 h-5" />
+                    </button>
                     <div className="flex gap-2">
-                      <button onClick={() => handleOpenCast(movie)} className="p-3 bg-white text-black rounded-xl hover:bg-[#cc111f] hover:text-white transition-all">
-                        <UserGroupIcon className="w-5 h-5" />
-                      </button>
-                      <button onClick={() => handleOpenMovie(movie)} className="p-3 bg-white text-black rounded-xl hover:bg-zinc-800 hover:text-white transition-all">
+                      <button onClick={() => handleOpenMovie(movie)} className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center hover:bg-zinc-800 hover:text-white transition-all transform hover:scale-110">
                         <PencilSquareIcon className="w-5 h-5" />
                       </button>
-                      <button onClick={() => handleDeleteMovie(movie.movieId)} className="p-3 bg-white text-black rounded-xl hover:bg-red-600 hover:text-white transition-all">
+                      <button onClick={() => handleDeleteMovie(movie.movieId)} className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center hover:bg-red-600 hover:text-white transition-all transform hover:scale-110">
                         <TrashIcon className="w-5 h-5" />
                       </button>
                     </div>
-                  </div>
-                  {movie.isPlaying && (
-                    <div className="absolute top-4 left-4 bg-[#cc111f] text-white text-[9px] font-bold px-3 py-1.5 rounded-full uppercase italic animate-pulse">
-                      Now Playing
-                    </div>
-                  )}
                 </div>
 
-                <div className="px-2 flex-grow flex flex-col">
-                  <div className="flex justify-between items-start gap-4 mb-4">
-                    <h3 className={`${anton.className} text-xl text-white italic tracking-tight line-clamp-2`}>
-                      {movie.title}
-                    </h3>
-                    <span className="text-[10px] bg-zinc-900 text-[#cc111f] border border-zinc-800 px-2 py-1 rounded-lg font-bold">
-                      {movie.ratingAge}
-                    </span>
+                {movie.isPlaying && (
+                  <div className="absolute top-4 left-4 bg-[#cc111f] text-white text-[8px] font-black px-3 py-1 rounded-full">
+                    now playing
                   </div>
-                  <div className="flex flex-wrap items-center gap-3 mt-auto pt-4 border-t border-zinc-900/50">
-                    <div className="flex items-center gap-1.5 text-zinc-500">
-                      <TagIcon className="w-3.5 h-3.5" />
-                      <span className="text-[10px] font-bold uppercase">{movie.genre}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-zinc-500 italic">
-                      <ClockIcon className="w-3.5 h-3.5" />
-                      <span className="text-[10px] font-bold">{movie.duration}m</span>
-                    </div>
-                    {/* Tampilkan Tanggal Rilis di Card jika perlu */}
-                    <div className="flex items-center gap-1.5 text-zinc-600 italic">
-                      <CalendarIcon className="w-3.5 h-3.5" />
-                      <span className="text-[10px] font-bold">{movie.releaseDate}</span>
-                    </div>
+                )}
+                <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-md text-[#cc111f] text-[9px] font-black border border-white/10 px-2 py-1 rounded-lg">
+                  {movie.ratingAge}
+                </div>
+              </div>
+
+              <div className="px-2 flex-grow space-y-3">
+                <h3 className={`${anton.className} text-lg text-white tracking-tight line-clamp-1`}>
+                  {movie.title}
+                </h3>
+                <div className="flex flex-wrap items-center gap-3 border-t border-zinc-900 pt-3">
+                  <div className="flex items-center gap-1 text-zinc-500">
+                    <TagIcon className="w-3 h-3" />
+                    <span className="text-[9px] font-black tracking-tighter">{movie.genre}</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-zinc-500">
+                    <ClockIcon className="w-3 h-3" />
+                    <span className="text-[9px] font-black">{movie.duration} min</span>
                   </div>
                 </div>
               </div>
-            ))}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
 
-      {/* --- Modal Movie Form --- */}
+      {/* pagination */}
+      {totalPages > 1 && (
+        <div className="flex justify-center items-center gap-4 pt-10">
+          <button
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage(p => p - 1)}
+            className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 disabled:opacity-30 transition-all hover:bg-white hover:text-black"
+          >
+            <ChevronLeftIcon className="w-5 h-5" />
+          </button>
+          
+          <div className="flex gap-2">
+            {[...Array(totalPages)].map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setCurrentPage(i + 1)}
+                className={`w-10 h-10 rounded-xl font-bold text-xs transition-all ${
+                  currentPage === i + 1 ? "bg-[#cc111f] text-white" : "bg-zinc-900 text-zinc-500 border border-zinc-800"
+                }`}
+              >
+                {i + 1}
+              </button>
+            ))}
+          </div>
+
+          <button
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage(p => p + 1)}
+            className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 disabled:opacity-30 transition-all hover:bg-white hover:text-black"
+          >
+            <ChevronRightIcon className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
+      {/* modal form */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-[#0f0f0f] w-full max-w-2xl rounded-[2rem] border border-zinc-800 shadow-2xl overflow-hidden relative modal-scale-animation flex flex-col max-h-[95vh]">
-            <div className="px-6 py-4 border-b border-zinc-900 flex justify-between items-center bg-zinc-900/20">
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <FilmIcon className="w-4 h-4 text-[#cc111f]" />
-                {selectedMovie ? "Edit Movie Content" : "Add New Movie"}
-              </h2>
-              <button onClick={() => setIsModalOpen(false)} className="p-1 hover:bg-zinc-800 rounded-lg text-zinc-500 hover:text-white transition-colors">
-                <XMarkIcon className="w-5 h-5" />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">
+          <div className="bg-[#0c0c0c] w-full max-w-4xl rounded-[3rem] border border-zinc-800 shadow-2xl overflow-hidden relative flex flex-col max-h-[90vh]">
+            <div className="px-10 py-6 border-b border-zinc-900 flex justify-between items-center bg-zinc-900/20">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-[#cc111f]/10 rounded-lg">
+                  <FilmIcon className="w-6 h-6 text-[#cc111f]" />
+                </div>
+                <h2 className="text-xl font-black text-white tracking-tighter">
+                  {selectedMovie ? "modify entry" : "new release"}
+                </h2>
+              </div>
+              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-zinc-800 rounded-full text-zinc-500 hover:text-white transition-colors">
+                <XMarkIcon className="w-6 h-6" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveMovie} className="p-6 overflow-y-auto custom-scrollbar space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Poster Section */}
-                <div className="space-y-4">
-                  <div className="aspect-[2/3] rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden relative group">
+            <form onSubmit={handleSaveMovie} className="p-10 overflow-y-auto custom-scrollbar space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
+                <div className="md:col-span-1 space-y-4">
+                  <div className="aspect-[2/3] rounded-3xl border border-zinc-800 bg-black overflow-hidden shadow-2xl relative group">
                     {movieForm.photo_url ? (
-                      <img src={movieForm.photo_url} className="w-full h-full object-cover" alt="Preview" />
+                      <img src={movieForm.photo_url} className="w-full h-full object-cover" alt="preview" />
                     ) : (
                       <div className="flex flex-col items-center justify-center h-full text-zinc-800">
-                        <PhotoIcon className="w-10 h-10 mb-2 opacity-20" />
-                        <span className="text-[10px] font-medium opacity-40">No Poster Loaded</span>
+                        <PhotoIcon className="w-12 h-12 mb-3 opacity-20" />
+                        <span className="text-[10px] font-black opacity-40">drop poster url</span>
                       </div>
                     )}
                   </div>
                   <input
                     type="text"
-                    className="admin-input-modern text-[11px]"
-                    placeholder="Paste photo URL here..."
+                    className="admin-input-modern text-[10px]"
+                    placeholder="poster url (https://...)"
                     value={movieForm.photo_url}
                     onChange={(e) => setMovieForm({ ...movieForm, photo_url: e.target.value })}
                   />
                 </div>
 
-                {/* Main Fields Section */}
-                <div className="space-y-4">
+                <div className="md:col-span-2 space-y-6">
                   <div>
-                    <label className="text-[10px] font-bold text-zinc-500 mb-1.5 block">Movie Title</label>
+                    <label className="text-[10px] font-black text-zinc-500 mb-2 block tracking-widest">movie title</label>
                     <input
                       type="text"
-                      className="admin-input-modern font-bold"
-                      placeholder="E.g. Inception"
+                      className="admin-input-modern font-black text-lg placeholder:opacity-20"
+                      placeholder="enter title"
                       value={movieForm.title}
                       onChange={(e) => setMovieForm({ ...movieForm, title: e.target.value })}
                       required
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-[10px] font-bold text-zinc-500 mb-1.5 block">Genre</label>
+                      <label className="text-[10px] font-black text-zinc-500 mb-2 block">genre</label>
                       <select
-                        className="admin-input-modern text-xs"
+                        className="admin-input-modern text-xs font-bold"
                         value={movieForm.genre}
                         onChange={(e) => setMovieForm({ ...movieForm, genre: e.target.value })}
                       >
-                        <option value="Action">Action</option>
-                        <option value="Horror">Horror</option>
-                        <option value="Comedy">Comedy</option>
-                        <option value="Drama">Drama</option>
-                        <option value="Sci-Fi">Sci-Fi</option>
-                        <option value="Animation">Animation</option>
+                        {GENRES.map(g => <option key={g} value={g}>{g.toLowerCase()}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-zinc-500 mb-1.5 block">Rating</label>
+                      <label className="text-[10px] font-black text-zinc-500 mb-2 block">parental rating</label>
                       <select
-                        className="admin-input-modern text-xs"
+                        className="admin-input-modern text-xs font-bold"
                         value={movieForm.rating_age}
                         onChange={(e) => setMovieForm({ ...movieForm, rating_age: e.target.value })}
                       >
-                        <option value="SU">SU</option>
+                        <option value="SU">su</option>
                         <option value="13+">13+</option>
                         <option value="17+">17+</option>
                         <option value="21+">21+</option>
@@ -330,20 +416,9 @@ export default function MoviesPage() {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="text-[10px] font-bold text-zinc-500 mb-1.5 block">Duration (min)</label>
-                    <input
-                      type="number"
-                      className="admin-input-modern text-xs"
-                      value={movieForm.duration}
-                      onChange={(e) => setMovieForm({ ...movieForm, duration: Number(e.target.value) })}
-                    />
-                  </div>
-
-                  {/* 3. ADD DATE FIELDS IN MODAL */}
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-[10px] font-bold text-zinc-500 mb-1.5 block">Release Date</label>
+                      <label className="text-[10px] font-black text-zinc-500 mb-2 block">start date</label>
                       <input
                         type="date"
                         className="admin-input-modern text-xs [color-scheme:dark]"
@@ -353,7 +428,7 @@ export default function MoviesPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-zinc-500 mb-1.5 block">End Date</label>
+                      <label className="text-[10px] font-black text-zinc-500 mb-2 block">end date</label>
                       <input
                         type="date"
                         className="admin-input-modern text-xs [color-scheme:dark]"
@@ -364,43 +439,37 @@ export default function MoviesPage() {
                   </div>
 
                   <div>
-                    <label className="text-[10px] font-bold text-zinc-500 mb-1.5 block">Trailer URL</label>
-                    <input
-                      type="text"
-                      className="admin-input-modern text-[11px]"
-                      placeholder="YouTube embed link..."
-                      value={movieForm.trailer_url}
-                      onChange={(e) => setMovieForm({ ...movieForm, trailer_url: e.target.value })}
+                    <label className="text-[10px] font-black text-zinc-500 mb-2 block">synopsis</label>
+                    <textarea
+                      className="admin-input-modern h-32 text-xs resize-none leading-relaxed"
+                      placeholder="movie summary..."
+                      value={movieForm.synopsis}
+                      onChange={(e) => setMovieForm({ ...movieForm, synopsis: e.target.value })}
                     />
                   </div>
                 </div>
               </div>
 
-              <div>
-                <label className="text-[10px] font-bold text-zinc-500 mb-1.5 block">Synopsis</label>
-                <textarea
-                  className="admin-input-modern h-24 text-xs resize-none"
-                  placeholder="Description of the movie..."
-                  value={movieForm.synopsis}
-                  onChange={(e) => setMovieForm({ ...movieForm, synopsis: e.target.value })}
-                />
-              </div>
-
-              <div className="flex items-center justify-between pt-4 border-t border-zinc-900">
-                <label className="flex items-center gap-2 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={movieForm.is_playing}
-                    onChange={(e) => setMovieForm({ ...movieForm, is_playing: e.target.checked })}
-                    className="w-4 h-4 rounded border-zinc-800 bg-zinc-900 text-[#cc111f] focus:ring-0"
-                  />
-                  <span className="text-[11px] font-medium text-zinc-400">Set as Now Playing</span>
+              <div className="flex items-center justify-between pt-8 border-t border-zinc-900">
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={movieForm.is_playing}
+                      onChange={(e) => setMovieForm({ ...movieForm, is_playing: e.target.checked })}
+                      className="sr-only"
+                    />
+                    <div className={`w-12 h-6 rounded-full transition-all duration-300 ${movieForm.is_playing ? 'bg-[#cc111f]' : 'bg-zinc-800'}`}></div>
+                    <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${movieForm.is_playing ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                  </div>
+                  <span className="text-xs font-black text-zinc-400 group-hover:text-white transition-colors">set as playing now</span>
                 </label>
+
                 <button
                   type="submit"
-                  className="bg-[#cc111f] hover:bg-white hover:text-black text-white px-8 py-2.5 rounded-lg text-xs font-bold transition-all active:scale-95"
+                  className="bg-[#cc111f] hover:bg-white hover:text-black text-white px-12 py-4 rounded-2xl text-xs font-black transition-all transform active:scale-95 shadow-xl"
                 >
-                  {selectedMovie ? "Update Movie" : "Save Movie"}
+                  {selectedMovie ? "confirm update" : "release movie"}
                 </button>
               </div>
             </form>
@@ -418,28 +487,20 @@ export default function MoviesPage() {
       <style jsx global>{`
         .admin-input-modern {
           width: 100%;
-          background: #18181b;
-          border: 1px solid #27272a;
-          border-radius: 0.75rem;
-          padding: 0.6rem 1rem;
+          background: #111;
+          border: 1px solid #222;
+          border-radius: 1rem;
+          padding: 0.8rem 1.2rem;
           color: white;
           outline: none;
-          transition: all 0.2s ease;
+          transition: all 0.3s ease;
         }
         .admin-input-modern:focus {
           border-color: #cc111f;
-          background: #111;
-          box-shadow: 0 0 0 2px rgba(204, 17, 31, 0.1);
+          background: #000;
         }
-        .modal-scale-animation {
-          animation: modal-zoom 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        @keyframes modal-zoom {
-          from { transform: scale(0.95); opacity: 0; }
-          to { transform: scale(1); opacity: 1; }
-        }
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #27272a; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #222; border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cc111f; }
       `}</style>
     </div>

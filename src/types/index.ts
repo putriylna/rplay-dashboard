@@ -64,14 +64,20 @@ export interface Cinema {
   updatedAt?: string;
 }
 
+// types.ts
 export interface Studio {
   studioId: number;
   cinemaId: number;
   namaStudio: string;
   type: string;
-  cinema?: Cinema;
-  createdAt?: string;
-  updatedAt?: string;
+  // Ini harus ada supaya UI bisa nampilin nama Bioskopnya
+  cinema?: {
+    cinemaId: number;
+    namaBioskop: string;
+    city?: {
+      cityName: string;
+    }
+  };
 }
 
 // Component Props Interfaces

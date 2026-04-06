@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { anton } from '@/lib/fonts';
-import { MapIcon, TrashIcon, PlusIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/components/ui/Button';
+import { MapIcon, TrashIcon, PlusIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { api } from '@/lib/api';
+import toast from 'react-hot-toast';
 
 // --- SKELETON COMPONENT ---
 const CitySkeleton = () => (
@@ -25,21 +25,19 @@ interface City {
 export default function CitiesPage() {
   const [cities, setCities] = useState<City[]>([]);
   const [newCityName, setNewCityName] = useState("");
-  const [loading, setLoading] = useState(true); // Default true untuk initial load
+  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   // --- 1. Ambil Data ---
   const fetchCities = useCallback(async () => {
-    setLoading(true);
     try {
       const { data, error } = await api.api.cities.get();
-      if (error) {
-        console.error("Gagal mengambil data kota:", error);
-        return;
-      }
+      if (error) throw new Error();
       if (data) setCities(data as City[]);
+    } catch (err) {
+      toast.error("Gagal mengambil data kota");
     } finally {
-      // Delay sedikit agar skeleton terasa smooth
-      setTimeout(() => setLoading(false), 500);
+      setInitialLoading(false);
     }
   }, []);
 
@@ -49,106 +47,132 @@ export default function CitiesPage() {
 
   // --- 2. Tambah Data ---
   const addCity = async () => {
-    if (!newCityName.trim()) return;
+    if (!newCityName.trim()) return toast.error("Nama kota tidak boleh kosong");
     
     setLoading(true);
+    const loadToast = toast.loading("Menambahkan kota...");
+    
     try {
       const { data, error } = await api.api.cities.post({
         city_name: newCityName
       });
 
       if (error) {
-        alert(error.value?.error || "Gagal menambah kota");
-        setLoading(false);
+        const errorMsg = (error.value as any)?.error || "Gagal menambah kota";
+        toast.error(errorMsg, { id: loadToast });
         return;
       }
 
       if (data) {
+        toast.success("Kota berhasil ditambahkan", { id: loadToast });
         setNewCityName("");
         fetchCities(); 
       }
     } catch (err) {
-      alert("Terjadi kesalahan koneksi ke server.");
+      toast.error("Terjadi kesalahan koneksi", { id: loadToast });
+    } finally {
       setLoading(false);
     }
   };
 
   // --- 3. Hapus Data ---
   const deleteCity = async (id: number) => {
-    if (!confirm("Hapus kota ini?")) return;
-    
-    // Optimistic Update
-    setCities(cities.filter(c => c.cityId !== id));
-    // Logika API delete bisa ditambahkan di sini
+    toast((t) => (
+      <div className="flex flex-col gap-3">
+        <p className="text-sm font-medium text-zinc-900">Hapus kota ini dari daftar operasional?</p>
+        <div className="flex gap-2">
+          <button 
+            onClick={async () => {
+              toast.dismiss(t.id);
+              const delToast = toast.loading("Menghapus...");
+              try {
+                const { error } = await (api.api.cities as any)[Number(id)].delete();
+                if (error) throw new Error();
+                
+                toast.success("Kota berhasil dihapus", { id: delToast });
+                fetchCities();
+              } catch {
+                toast.error("Gagal menghapus kota", { id: delToast });
+              }
+            }}
+            className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold"
+          >
+            Ya, Hapus
+          </button>
+          <button onClick={() => toast.dismiss(t.id)} className="bg-zinc-200 text-zinc-800 px-3 py-1.5 rounded-lg text-xs font-bold">
+            Batal
+          </button>
+        </div>
+      </div>
+    ), { duration: 5000, position: 'top-center' });
   };
 
   return (
-    <div className="space-y-10 animate-in fade-in duration-700 max-w-3xl">
+    <div className="space-y-8 animate-in fade-in duration-700 max-w-3xl">
       {/* Header */}
-      <div className="space-y-2">
-        <h1 className={`${anton.className} text-5xl text-white italic tracking-tight`}>
-          Operational Cities
+      <div className="space-y-1">
+        <h1 className={`${anton.className} text-4xl text-white tracking-tight`}>
+          Operational <span className="text-[#cc111f]">Cities</span>
         </h1>
-        <p className="text-zinc-500 text-sm font-medium italic">
-          Kelola daftar kota operasional untuk layanan RPlay Cinema
+        <p className="text-zinc-500 text-sm font-medium">
+          Kelola daftar kota operasional untuk layanan RPlay Cinema.
         </p>
       </div>
 
       {/* Input Form Section */}
-      <div className="bg-[#0a0a0a] border border-zinc-900 p-6 rounded-[1.5rem] shadow-xl">
+      <div className="bg-zinc-900/30 border border-zinc-800/50 p-4 rounded-2xl shadow-xl">
         <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <MapIcon className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" />
+          <div className="relative flex-1 group">
+            <MapIcon className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-[#cc111f] transition-colors" />
             <input 
               type="text" 
               value={newCityName}
               onChange={(e) => setNewCityName(e.target.value)}
               placeholder="Masukkan nama kota baru..." 
-              className="admin-input-modern !pl-12 !py-3.5 text-sm font-medium"
+              className="admin-input-v3 !pl-12 !py-3 text-sm font-medium"
               disabled={loading}
             />
           </div>
-          <Button 
+          <button 
             onClick={addCity} 
             disabled={loading}
-            className="bg-white hover:bg-[#cc111f] hover:text-white flex items-center justify-center gap-2 px-6 h-[48px] rounded-xl transition-all shadow-xl active:scale-95 !text-black font-bold text-xs"
+            className="bg-white hover:bg-[#cc111f] hover:text-white flex items-center justify-center gap-2 px-8 h-[46px] rounded-xl transition-all active:scale-95 text-black font-bold text-xs shadow-lg shadow-black/20"
           >
-            {loading ? "Processing..." : (
+            {loading ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : (
               <>
-                <PlusIcon className="w-4 h-4 stroke-[3px] " />
+                <PlusIcon className="w-4 h-4 stroke-[3px]" />
                 Add City
               </>
             )}
-          </Button>
+          </button>
         </div>
       </div>
 
       {/* Grid Cities */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {loading ? (
-          // Render 4 skeleton items saat loading
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {initialLoading ? (
           Array.from({ length: 4 }).map((_, i) => <CitySkeleton key={i} />)
         ) : cities.length === 0 ? (
-          <div className="col-span-full py-12 border-2 border-dashed border-zinc-900 rounded-[2rem] flex flex-col items-center justify-center opacity-30">
-              <MapIcon className="w-10 h-10 mb-2 text-zinc-500" />
-              <p className="text-xs font-bold italic uppercase tracking-widest">No Cities Data</p>
+          <div className="col-span-full py-20 border border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center text-zinc-600">
+              <MapIcon className="w-12 h-12 mb-3 opacity-20" />
+              <p className="text-sm font-medium">Belum ada data kota operasional.</p>
           </div>
         ) : (
           cities.map((city) => (
             <div 
               key={city.cityId} 
-              className="bg-[#0f0f0f] border border-zinc-900 p-5 rounded-2xl flex justify-between items-center group hover:border-[#cc111f]/30 hover:bg-[#121212] transition-all duration-300"
+              className="group bg-zinc-900/20 border border-zinc-800/50 p-4 rounded-2xl flex justify-between items-center hover:border-zinc-700 hover:bg-zinc-900/40 transition-all"
             >
               <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center group-hover:bg-[#cc111f]/10 group-hover:border-[#cc111f]/20 transition-all">
-                  <MapIcon className="w-5 h-5 text-zinc-500 group-hover:text-[#cc111f]" />
+                <div className="w-10 h-10 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center group-hover:border-[#cc111f]/30 transition-all">
+                  <MapIcon className="w-5 h-5 text-[#cc111f]" />
                 </div>
-                <span className="text-zinc-200 font-bold text-sm tracking-wide">{city.cityName}</span>
+                <span className="text-zinc-200 font-bold text-sm tracking-tight">{city.cityName}</span>
               </div>
               
               <button 
                 onClick={() => deleteCity(city.cityId)}
-                className="text-zinc-700 hover:text-red-500 hover:bg-red-500/10 p-2.5 rounded-lg transition-all"
+                className="p-2 bg-zinc-800/50 hover:bg-red-950 hover:text-red-500 text-zinc-500 rounded-lg transition-all"
               >
                 <TrashIcon className="w-4 h-4 stroke-[2px]" />
               </button>
@@ -157,22 +181,20 @@ export default function CitiesPage() {
         )}
       </div>
 
-      {/* Reusable Styles */}
       <style jsx global>{`
-        .admin-input-modern {
+        .admin-input-v3 {
           width: 100%;
-          background: #18181b;
-          border: 1px solid #27272a;
+          background: #09090b;
+          border: 1px solid #1f1f23;
           border-radius: 0.75rem;
-          padding: 0.6rem 1rem;
+          padding: 0.75rem 1rem;
           color: white;
+          font-size: 0.85rem;
           outline: none;
           transition: all 0.2s ease;
         }
-        .admin-input-modern:focus {
+        .admin-input-v3:focus {
           border-color: #cc111f;
-          background: #111;
-          box-shadow: 0 0 0 2px rgba(204, 17, 31, 0.1);
         }
       `}</style>
     </div>

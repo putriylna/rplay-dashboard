@@ -1,71 +1,45 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { anton } from '@/lib/fonts';
-import { 
-  PlusIcon, 
-  PencilSquareIcon, 
-  TrashIcon, 
-  TvIcon,
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { anton } from "@/lib/fonts";
+import {
+  PlusIcon,
+  TrashIcon,
+  BuildingOfficeIcon,
   XMarkIcon,
-  RectangleGroupIcon,
-  MapPinIcon
-} from '@heroicons/react/24/outline';
-import { Button } from '@/components/ui/Button';
-import Link from 'next/link';
-import { api } from '@/lib/api'; 
-import { studioService } from '@/services/studioService'; // Import Service Baru
-import { Studio } from '@/types'; // Import Interface
-import { toast } from 'react-hot-toast'; // Opsional: Untuk feedback UI
-
-// --- SKELETON COMPONENT ---
-const StudioSkeleton = () => (
-  <div className="bg-[#0f0f0f] border border-zinc-900 rounded-[1.5rem] p-6 animate-pulse">
-    <div className="flex justify-between items-start mb-6">
-      <div className="w-12 h-12 rounded-2xl bg-zinc-800" />
-      <div className="flex gap-2">
-        <div className="w-8 h-8 rounded-lg bg-zinc-800" />
-        <div className="w-8 h-8 rounded-lg bg-zinc-800" />
-      </div>
-    </div>
-    <div className="space-y-3 mb-6">
-      <div className="h-3 w-16 bg-zinc-800 rounded" />
-      <div className="h-8 w-3/4 bg-zinc-800 rounded-lg" />
-      <div className="h-3 w-1/2 bg-zinc-800 rounded" />
-    </div>
-    <div className="h-12 w-full bg-zinc-800 rounded-xl" />
-  </div>
-);
+  PencilSquareIcon,
+  MagnifyingGlassIcon,
+} from "@heroicons/react/24/outline";
+import Link from "next/link";
+import { studioService } from "@/services/studioService";
+import { cinemaService } from "@/services/cinemaService";
+import { Studio, Cinema } from "@/types";
+import toast from "react-hot-toast";
 
 export default function StudiosPage() {
   const [studios, setStudios] = useState<Studio[]>([]);
-  const [cinemas, setCinemas] = useState<any[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [loading, setLoading] = useState(true); 
-  const [editId, setEditId] = useState<number | null>(null);
+  const [cinemas, setCinemas] = useState<Cinema[]>([]);
+  const [selectedCinemaId, setSelectedCinemaId] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
+  // State Modal (Gabungan untuk Add & Edit)
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingStudio, setEditingStudio] = useState<Studio | null>(null);
   const [formData, setFormData] = useState({
-    nama_studio: '',
-    type: 'Reguler',
-    cinema_id: ''
+    nama: "Studio 1",
+    type: "Reguler",
   });
 
-  // 1. FETCH DATA MENGGUNAKAN SERVICE
   const fetchData = useCallback(async () => {
-    setLoading(true);
     try {
-      // Mengambil studio via Service & Cinema via direct API (atau buatkan cinemaService nanti)
-      const [resStudios, { data: resCinemas }] = await Promise.all([
+      const [resStudios, resCinemas] = await Promise.all([
         studioService.getAll(),
-        api.api.cinemas.get()
+        cinemaService.getAll(),
       ]);
-      
       setStudios(resStudios);
-      if (resCinemas) setCinemas(resCinemas as any[]);
-    } catch (err: any) {
-      toast.error(err.message || "Gagal mengambil data");
-    } finally {
-      setTimeout(() => setLoading(false), 500);
+      setCinemas(resCinemas as unknown as Cinema[]);
+    } catch (err) {
+      toast.error("Gagal memuat data");
     }
   }, []);
 
@@ -73,225 +47,281 @@ export default function StudiosPage() {
     fetchData();
   }, [fetchData]);
 
-  const handleEditOpen = (studio: Studio) => {
-    setEditId(studio.studioId);
-    setFormData({
-      nama_studio: studio.namaStudio,
-      type: studio.type,
-      cinema_id: studio.cinemaId.toString()
-    });
-    setIsModalOpen(true);
-  };
+  // LOGIK PENCARIAN: Memfilter daftar bioskop di dalam select
+  const searchedCinemas = useMemo(() => {
+    return cinemas.filter((c) =>
+      c.namaBioskop.toLowerCase().includes(searchQuery.toLowerCase()),
+    );
+  }, [cinemas, searchQuery]);
 
-  // 2. HANDLE SUBMIT MENGGUNAKAN SERVICE
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    try {
-      const payload = {
-        nama_studio: formData.nama_studio,
-        type: formData.type,
-        cinema_id: Number(formData.cinema_id)
-      };
+    if (selectedCinemaId === "all" && !editingStudio) {
+      return toast.error("Pilih bioskop terlebih dahulu!");
+    }
 
-      if (editId) {
-        await studioService.update(editId, payload);
-        toast.success("Studio berhasil diperbarui");
+    const t = toast.loading(
+      editingStudio ? "Memperbarui studio..." : "Mendaftarkan studio...",
+    );
+    try {
+      if (editingStudio) {
+        // Logika Update
+        await studioService.update(editingStudio.studioId, {
+          nama_studio: formData.nama,
+          type: formData.type,
+          cinema_id: editingStudio.cinemaId,
+        });
+        toast.success("Studio berhasil diperbarui!", { id: t });
       } else {
-        await studioService.create(payload);
-        toast.success("Studio berhasil dibuat");
+        // Logika Create
+        await studioService.create({
+          nama_studio: formData.nama,
+          type: formData.type,
+          cinema_id: Number(selectedCinemaId),
+        });
+        toast.success("Studio berhasil dibuat!", { id: t });
       }
-      handleCloseModal();
+      setIsModalOpen(false);
       fetchData();
-    } catch (err: any) {
-      toast.error(err.message || "Gagal menyimpan data");
-      setLoading(false);
+    } catch (err) {
+      toast.error("Terjadi kesalahan sistem", { id: t });
     }
   };
 
-  // 3. HANDLE DELETE MENGGUNAKAN SERVICE
-  const handleDelete = async (id: number) => {
-    if (!confirm("Hapus studio ini? Semua kursi di studio ini juga akan terhapus.")) return;
-    try {
-      await studioService.delete(id);
-      toast.success("Studio dihapus");
-      fetchData();
-    } catch (err: any) {
-      toast.error(err.message || "Gagal menghapus");
-    }
+  const confirmDelete = (id: number) => {
+    toast(
+      (t) => (
+        <div className="flex flex-col gap-3">
+          <p className="text-sm font-medium text-white">
+            Hapus studio ini? Data layout kursi juga akan hilang.
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={async () => {
+                toast.dismiss(t.id);
+                const loading = toast.loading("Menghapus...");
+                try {
+                  await studioService.delete(id);
+                  toast.success("Studio dihapus", { id: loading });
+                  fetchData();
+                } catch {
+                  toast.error("Gagal menghapus", { id: loading });
+                }
+              }}
+              className="bg-cyan-500 text-black px-4 py-2 rounded-lg text-xs font-bold"
+            >
+              Oke
+            </button>
+            <button
+              onClick={() => toast.dismiss(t.id)}
+              className="bg-zinc-800 text-zinc-400 px-4 py-2 rounded-lg text-xs font-bold"
+            >
+              Batal
+            </button>
+          </div>
+        </div>
+      ),
+      {
+        duration: 5000,
+        style: {
+          background: "#18181b",
+          border: "1px solid #27272a",
+          borderRadius: "1rem",
+        },
+      },
+    );
   };
 
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setEditId(null);
-    setFormData({ nama_studio: '', type: 'Reguler', cinema_id: '' });
-  };
+  const filteredStudios =
+    selectedCinemaId === "all"
+      ? studios
+      : studios.filter((s) => s.cinemaId === Number(selectedCinemaId));
 
   return (
-    <div className="space-y-10 animate-in fade-in duration-700 p-6 max-w-6xl mx-auto">
-      {/* Header Section */}
+    <div className="p-6 lg:p-10 max-w-6xl mx-auto space-y-8 min-h-screen text-zinc-300">
+      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div className="space-y-2">
-          <h1 className={`${anton.className} text-5xl text-white italic tracking-tight`}>
-            Theater Studios
+        <div>
+          <h1
+            className={`${anton.className} text-4xl text-white tracking-tight uppercase`}
+          >
+            Theater <span className="text-[#cc111f]">Studios</span>
           </h1>
-          <p className="text-zinc-500 text-sm font-medium italic">
-            Kelola konfigurasi studio dan tipe layar di setiap bioskop.
+          <p className="text-zinc-500 text-sm mt-1">
+            Manajemen studio per unit bioskop.
           </p>
         </div>
-        <Button 
-          onClick={() => setIsModalOpen(true)} 
-          className="flex items-center gap-2 px-8 h-[48px] rounded-xl bg-white hover:bg-[#cc111f] !text-black hover:!text-white font-bold text-xs transition-all active:scale-95 shadow-lg"
+        <button
+          onClick={() => {
+            if (selectedCinemaId === "all")
+              return toast.error("Pilih bioskop di filter terlebih dahulu");
+            setEditingStudio(null);
+            setFormData({ nama: "Studio 1", type: "Reguler" });
+            setIsModalOpen(true);
+          }}
+          className="bg-[#cc111f] hover:bg-white hover:text-black text-white px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center gap-2 shadow-lg shadow-red-900/20"
         >
-          <PlusIcon className="w-4 h-4 stroke-[3px]" /> Add New Studio
-        </Button>
+          <PlusIcon className="w-5 h-5 stroke-[2.5]" /> Tambah Studio
+        </button>
       </div>
 
-      {/* Grid Content */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {loading ? (
-          Array.from({ length: 6 }).map((_, i) => <StudioSkeleton key={i} />)
-        ) : studios.length === 0 ? (
-          <div className="col-span-full py-20 border-2 border-dashed border-zinc-900 rounded-[2rem] flex flex-col items-center justify-center opacity-30">
-             <TvIcon className="w-12 h-12 mb-3 text-zinc-500" />
-             <p className="text-xs font-bold italic uppercase tracking-widest">No Studios Found</p>
+      {/* FILTER SEARCH & SELECT (Gabungan) */}
+      <div className="bg-zinc-900/50 p-6 rounded-[2.5rem] border border-zinc-800/50 space-y-4">
+        <div className="flex flex-col md:flex-row gap-4">
+          {/* Input Pencarian */}
+          <div className="flex-1 relative">
+            <MagnifyingGlassIcon className="w-5 h-5 text-zinc-500 absolute left-4 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Cari nama bioskop..."
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-sm text-white focus:border-[#cc111f] outline-none transition-all"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
-        ) : (
-          studios.map((studio) => (
-            <div key={studio.studioId} className="bg-[#0f0f0f] border border-zinc-900 rounded-[1.5rem] p-6 group hover:border-[#cc111f]/30 hover:bg-[#121212] transition-all duration-300 flex flex-col">
-              <div className="flex justify-between items-start mb-6">
-                <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center group-hover:bg-[#cc111f]/10 group-hover:border-[#cc111f]/20 transition-all">
-                  <TvIcon className="w-6 h-6 text-[#cc111f]" />
-                </div>
-                <div className="flex gap-1">
-                  <button onClick={() => handleEditOpen(studio)} className="p-2 text-zinc-600 hover:text-white hover:bg-zinc-800 rounded-lg transition-all">
-                    <PencilSquareIcon className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => handleDelete(studio.studioId)} className="p-2 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all">
-                    <TrashIcon className="w-4 h-4" />
-                  </button>
+
+          {/* Dropdown Bioskop (Terfilter otomatis) */}
+          <div className="flex-[1.5]">
+            <select
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm font-bold text-white focus:border-[#cc111f] outline-none cursor-pointer"
+              value={selectedCinemaId}
+              onChange={(e) => setSelectedCinemaId(e.target.value)}
+            >
+              <option value="all">
+                Tampilkan Semua Bioskop ({searchedCinemas.length})
+              </option>
+              {searchedCinemas.map((c) => (
+                <option key={c.cinemaId} value={c.cinemaId}>
+                  {c.namaBioskop}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* List Studio (Card Layout) */}
+      <div className="space-y-3">
+        {filteredStudios.map((studio: any) => (
+          <div
+            key={studio.studioId}
+            className="group bg-zinc-900/30 border border-zinc-800/50 rounded-[2rem] p-5 flex items-center justify-between hover:bg-zinc-900/60 transition-all"
+          >
+            <div className="flex items-center gap-5">
+              <div className="w-12 h-12 bg-zinc-950 rounded-xl flex items-center justify-center border border-zinc-800 text-[#cc111f]">
+                <BuildingOfficeIcon className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white tracking-tight">
+                  {studio.cinema?.namaBioskop}
+                </h3>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-black text-zinc-400 uppercase tracking-tighter">
+                    {studio.namaStudio}
+                  </p>
+                  <span className="px-2 py-0.5 rounded text-[8px] font-black bg-zinc-800 text-zinc-500 border border-zinc-700 uppercase">
+                    {studio.type}
+                  </span>
                 </div>
               </div>
+            </div>
 
-              <div className="space-y-1 mb-6 flex-1">
-                <span className={`text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-tighter inline-block ${
-                  studio.type === 'IMAX' ? 'bg-blue-600 text-white' :
-                  studio.type === 'Premiere' ? 'bg-yellow-500 text-black' :
-                  'bg-zinc-800 text-zinc-400'
-                }`}>
-                  {studio.type}
-                </span>
-                <h3 className="text-zinc-100 font-bold text-2xl italic tracking-tight">{studio.namaStudio}</h3>
-                <div className="flex items-center gap-1.5 text-zinc-500">
-                  <MapPinIcon className="w-3 h-3" />
-                  <p className="text-[11px] font-medium leading-none">{studio.cinema?.namaBioskop || 'Unknown Location'}</p>
-                </div>
-              </div>
-
-              <Link 
-                href={`/studios/${studio.studioId}/seats`}
-                className="w-full py-3.5 bg-zinc-900/50 border border-zinc-800 rounded-xl text-zinc-400 text-[10px] font-bold uppercase tracking-widest hover:bg-white hover:text-black hover:border-white transition-all flex items-center justify-center gap-2 group/btn"
+            <div className="flex items-center gap-2">
+              {/* Tombol Edit */}
+              <button
+                onClick={() => {
+                  setEditingStudio(studio);
+                  setFormData({ nama: studio.namaStudio, type: studio.type });
+                  setIsModalOpen(true);
+                }}
+                className="p-2 text-zinc-600 hover:text-white transition-colors"
               >
-                <RectangleGroupIcon className="w-4 h-4 transition-transform group-hover/btn:scale-110" /> 
-                Seat Management
+                <PencilSquareIcon className="w-5 h-5" />
+              </button>
+
+              {/* Tombol Delete */}
+              <button
+                onClick={() => confirmDelete(studio.studioId)}
+                className="p-2 text-zinc-600 hover:text-red-500 transition-colors"
+              >
+                <TrashIcon className="w-5 h-5" />
+              </button>
+
+              <Link
+                href={`/studios/${studio.studioId}/seats`}
+                className="ml-4 bg-[#1c1c1e] text-zinc-300 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase border border-zinc-800 hover:bg-white hover:text-black transition-all inline-block"
+              >
+                Configure Layout
               </Link>
             </div>
-          ))
-        )}
+          </div>
+        ))}
       </div>
 
-      {/* Modal Form */}
+      {/* Modal Form (Add & Edit) */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
-          <div className="bg-[#0a0a0a] w-full max-w-md rounded-[2rem] border border-zinc-800 shadow-2xl overflow-hidden">
-            <div className="p-8 border-b border-zinc-900 flex justify-between items-center">
-              <h2 className={`${anton.className} text-3xl text-white italic tracking-tight`}>
-                {editId ? 'Edit Studio' : 'New Studio'}
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-in zoom-in-95 duration-200">
+          <form
+            onSubmit={handleSubmit}
+            className="bg-[#0c0c0e] w-full max-w-md rounded-[2.5rem] border border-zinc-800 shadow-2xl p-8 space-y-6"
+          >
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold text-white">
+                {editingStudio ? "Update Studio" : "Tambah Studio Baru"}
               </h2>
-              <button onClick={handleCloseModal} className="w-10 h-10 flex items-center justify-center rounded-full bg-zinc-900 text-zinc-500 hover:text-white transition-all">
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="text-zinc-500 hover:text-white"
+              >
                 <XMarkIcon className="w-6 h-6" />
               </button>
             </div>
-            
-            <form onSubmit={handleSubmit} className="p-8 space-y-5">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-zinc-500 ml-1">Studio Name</label>
-                <input 
-                  type="text" 
-                  className="admin-input-modern" 
-                  placeholder="e.g. Studio 1"
-                  value={formData.nama_studio}
-                  onChange={e => setFormData({...formData, nama_studio: e.target.value})}
-                  required 
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-zinc-500 uppercase ml-1">
+                  Nama Studio
+                </label>
+                <input
+                  required
+                  type="text"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-white focus:border-[#cc111f] outline-none mt-1"
+                  value={formData.nama}
+                  onChange={(e) =>
+                    setFormData({ ...formData, nama: e.target.value })
+                  }
                 />
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-zinc-500 ml-1">Location</label>
-                <select 
-                  className="admin-input-modern appearance-none cursor-pointer"
-                  value={formData.cinema_id}
-                  onChange={e => setFormData({...formData, cinema_id: e.target.value})}
-                  required
-                >
-                  <option value="" className="bg-zinc-900 text-zinc-400">Select Cinema</option>
-                  {cinemas.map((c: any) => (
-                    <option key={c.cinemaId} value={c.cinemaId} className="bg-zinc-900">{c.namaBioskop}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-zinc-500 ml-1 text-center block">Screen Type</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {['Reguler', 'IMAX', 'Premiere'].map((t) => (
+              <div>
+                <label className="text-xs font-bold text-zinc-500 uppercase ml-1">
+                  Tipe Studio
+                </label>
+                <div className="grid grid-cols-3 gap-2 mt-1">
+                  {["Reguler", "IMAX", "Premiere"].map((t) => (
                     <button
                       key={t}
                       type="button"
-                      onClick={() => setFormData({...formData, type: t})}
-                      className={`py-2.5 rounded-xl text-[10px] font-black transition-all border ${
-                        formData.type === t 
-                        ? 'bg-[#cc111f] border-[#cc111f] text-white shadow-lg' 
-                        : 'bg-zinc-900 border-zinc-800 text-zinc-500'
-                      }`}
+                      onClick={() => setFormData({ ...formData, type: t })}
+                      className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all border ${formData.type === t ? "bg-white text-black border-white" : "bg-transparent border-zinc-800 text-zinc-500"}`}
                     >
-                      {t.toUpperCase()}
+                      {t}
                     </button>
                   ))}
                 </div>
               </div>
+            </div>
 
-              <Button 
-                type="submit" 
-                disabled={loading} 
-                className="w-full h-[56px] mt-4 rounded-2xl bg-white hover:bg-[#cc111f] !text-black hover:!text-white font-black text-xs tracking-widest transition-all"
-              >
-                {loading ? 'SAVING...' : editId ? 'UPDATE STUDIO' : 'CREATE STUDIO'}
-              </Button>
-            </form>
-          </div>
+            <button
+              type="submit"
+              className="w-full py-4 bg-[#cc111f] text-white rounded-2xl font-bold hover:brightness-125 transition-all shadow-lg shadow-red-900/20 uppercase text-xs tracking-widest"
+            >
+              {editingStudio ? "Simpan Perubahan" : "Konfirmasi & Simpan"}
+            </button>
+          </form>
         </div>
       )}
-
-      {/* Global CSS for Modern Input */}
-      <style jsx global>{`
-        .admin-input-modern {
-          width: 100%;
-          background: #121212;
-          border: 1px solid #1f1f23;
-          border-radius: 1rem;
-          padding: 0.9rem 1.25rem;
-          color: white;
-          font-size: 0.875rem;
-          outline: none;
-          transition: all 0.2s ease;
-        }
-        .admin-input-modern:focus {
-          border-color: #cc111f;
-          background: #000;
-          box-shadow: 0 0 0 4px rgba(204, 17, 31, 0.1);
-        }
-      `}</style>
     </div>
   );
 }
