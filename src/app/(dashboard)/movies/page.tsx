@@ -86,9 +86,11 @@ export default function MoviesPage() {
       const matchesGenre = selectedGenre === "All" || m.genre === selectedGenre;
       
       let matchesStatus = true;
-      if (statusFilter === "playing") matchesStatus = m.isPlaying === true;
-      if (statusFilter === "upcoming") {
-        matchesStatus = new Date(m.releaseDate) > new Date();
+      // Logika: Jika isPlaying true masuk ke 'playing', jika false masuk ke 'upcoming'
+      if (statusFilter === "playing") {
+        matchesStatus = m.isPlaying === true;
+      } else if (statusFilter === "upcoming") {
+        matchesStatus = m.isPlaying === false;
       }
 
       return matchesSearch && matchesGenre && matchesStatus;
@@ -131,7 +133,6 @@ export default function MoviesPage() {
     setIsModalOpen(true);
   };
 
-  // Fungsi untuk membuka modal cast yang sebelumnya hilang
   const handleOpenCast = (movie: Movie) => {
     setSelectedMovie(movie);
     setIsCastModalOpen(true);
@@ -368,13 +369,38 @@ export default function MoviesPage() {
                       </div>
                     )}
                   </div>
-                  <input
-                    type="text"
-                    className="admin-input-modern text-[10px]"
-                    placeholder="poster url (https://...)"
-                    value={movieForm.photo_url}
-                    onChange={(e) => setMovieForm({ ...movieForm, photo_url: e.target.value })}
-                  />
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-[10px] font-black text-zinc-500 mb-2 block tracking-widest">poster url</label>
+                      <input
+                        type="text"
+                        className="admin-input-modern text-[10px]"
+                        placeholder="https://..."
+                        value={movieForm.photo_url}
+                        onChange={(e) => setMovieForm({ ...movieForm, photo_url: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-zinc-500 mb-2 block tracking-widest">video trailer url</label>
+                      <input
+                        type="text"
+                        className="admin-input-modern text-[10px]"
+                        placeholder="https://youtube.com/..."
+                        value={movieForm.trailer_url}
+                        onChange={(e) => setMovieForm({ ...movieForm, trailer_url: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-zinc-500 mb-2 block tracking-widest">duration (min)</label>
+                      <input
+                        type="number"
+                        className="admin-input-modern text-[10px]"
+                        placeholder="120"
+                        value={movieForm.duration}
+                        onChange={(e) => setMovieForm({ ...movieForm, duration: Number(e.target.value) })}
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="md:col-span-2 space-y-6">

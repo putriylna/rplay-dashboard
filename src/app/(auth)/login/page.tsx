@@ -6,14 +6,13 @@ import { useRouter } from 'next/navigation';
 import { anton } from '@/lib/fonts';
 import Link from 'next/link';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
-// --- IMPORT EDEN CLIENT ---
 import { api } from '@/lib/api'; 
 
 export default function LoginPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   
-  // State untuk menangkap input
+  // Input states
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -21,87 +20,103 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return; 
+
     setError("");
     setLoading(true);
 
     try {
-      // --- PROSES LOGIN KE BACKEND ---
+      // 1. Request login ke Elysia Backend
       const { data, error: apiError } = await api.api.admin.login.post({
         email: email,
         password: password,
       });
 
+      // 2. Error Handling
       if (apiError) {
-        // Jika error dari backend (salah password/email)
-        setError(apiError.value?.error || "Terjadi kesalahan login");
+        const errorMsg = (apiError.value as any)?.error || "Email atau Password salah!";
+        setError(errorMsg);
         setLoading(false);
         return;
       }
 
-      if (data?.token) {
-        // Simpan Token JWT asli dari Backend
+      // 3. Simpan Sesi & Password Sementara
+      if (data?.token && data?.data) {
+        // Bersihkan data lama
+        localStorage.clear();
+
+        // Simpan Sesi Baru
         localStorage.setItem('admin_token', data.token);
         localStorage.setItem('userRole', 'admin');
         localStorage.setItem('admin_data', JSON.stringify(data.data));
         
-        router.push('/dashboard');
+        /** * PENTING: Simpan password asli di localStorage.
+         * Ini digunakan oleh halaman /scanner untuk verifikasi Argon2 di backend.
+         */
+        localStorage.setItem('admin_temp_pass', password); 
+        
+        // Navigasi ke Dashboard
+        router.replace('/dashboard'); 
+      } else {
+        throw new Error("Format respons server tidak sesuai.");
       }
-    } catch (err) {
-      setError("Gagal terhubung ke server. Pastikan Tmole aktif.");
+    } catch (err: any) {
+      console.error("Login Error:", err);
+      setError("Gagal terhubung ke server. Pastikan Backend aktif.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-6 font-montserrat relative overflow-hidden">
-      <div className="absolute w-48 h-48 bg-[#cc111f] rounded-full blur-[100px] opacity-20 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -z-10"></div>
+    <div className="min-h-screen bg-black flex items-center justify-center p-6 font-sans relative overflow-hidden">
+      {/* Background Glow */}
+      <div className="absolute w-64 h-64 bg-[#cc111f] rounded-full blur-[120px] opacity-20 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -z-10"></div>
 
-      <div className="w-full max-w-[360px] p-7 bg-[#121212]/90 backdrop-blur-md rounded-xl border border-zinc-800 shadow-2xl">
-        <div className="text-center mb-8">
-          <h1 className={`${anton.className} text-4xl text-[#cc111f] mb-1 tracking-tight uppercase`}>
+      <div className="w-full max-w-[360px] p-8 bg-[#121212]/90 backdrop-blur-xl rounded-2xl border border-zinc-800 shadow-2xl">
+        <div className="text-center mb-10">
+          <h1 className={`${anton.className} text-5xl text-[#cc111f] mb-2 tracking-tighter uppercase`}>
             RPLAY
           </h1>
-          <p className="text-zinc-500 text-[10px] uppercase tracking-[0.3em] font-bold">Admin Portal</p>
+          <p className="text-zinc-500 text-[10px] uppercase tracking-[0.4em] font-black">Admin Management</p>
         </div>
 
-        {/* Tampilkan pesan error jika login gagal */}
         {error && (
-          <div className="bg-red-500/10 border border-red-500 text-red-500 text-[10px] p-2 rounded mb-4 text-center font-bold uppercase">
+          <div className="bg-red-500/10 border border-red-500/50 text-red-500 text-[11px] p-3 rounded-lg mb-6 text-center font-bold uppercase animate-in fade-in zoom-in duration-300">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="block text-zinc-500 text-[10px] uppercase mb-1.5 ml-1 font-bold">Email</label>
+        <form onSubmit={handleLogin} className="space-y-5">
+          <div className="space-y-2">
+            <label className="block text-zinc-500 text-[10px] uppercase ml-1 font-bold tracking-wider">Email Address</label>
             <input 
               type="email" 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="admin@rplay.com" 
-              className="admin-input py-2.5 text-sm w-full bg-zinc-900 border-zinc-800 text-white px-3 rounded-lg focus:outline-none focus:border-[#cc111f]" 
+              className="w-full py-3 bg-zinc-900/50 border border-zinc-800 text-white px-4 rounded-xl focus:outline-none focus:border-[#cc111f] transition-all text-sm" 
               required 
             />
           </div>
 
-          <div>
-            <label className="block text-zinc-500 text-[10px] uppercase mb-1.5 ml-1 font-bold">Password</label>
+          <div className="space-y-2">
+            <label className="block text-zinc-500 text-[10px] uppercase ml-1 font-bold tracking-wider">Password</label>
             <div className="relative">
               <input 
                 type={showPassword ? "text" : "password"} 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••" 
-                className="admin-input py-2.5 text-sm pr-10 w-full bg-zinc-900 border-zinc-800 text-white px-3 rounded-lg focus:outline-none focus:border-[#cc111f]" 
+                className="w-full py-3 pr-12 bg-zinc-900/50 border border-zinc-800 text-white px-4 rounded-xl focus:outline-none focus:border-[#cc111f] transition-all text-sm" 
                 required 
               />
               <button 
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-white transition-colors"
               >
-                {showPassword ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+                {showPassword ? <EyeSlashIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
               </button>
             </div>
           </div>
@@ -109,17 +124,17 @@ export default function LoginPage() {
           <Button 
             type="submit" 
             disabled={loading}
-            className="w-full py-3 mt-2 uppercase tracking-widest font-bold text-xs bg-[#cc111f] hover:bg-[#aa0e19] text-white rounded-lg transition-all"
+            className="w-full py-4 mt-4 uppercase tracking-[0.2em] font-black text-[11px] bg-[#cc111f] hover:bg-[#aa0e19] text-white rounded-xl transition-all shadow-lg shadow-red-900/20 disabled:opacity-50 active:scale-[0.98]"
           >
-            {loading ? "Authenticating..." : "Sign In"}
+            {loading ? "Authenticating..." : "Authorized Access"}
           </Button>
         </form>
 
-        <div className="mt-6 pt-5 border-t border-zinc-800/50 text-center">
-          <p className="text-zinc-500 text-[11px]">
-            Belum punya akses?{' '}
-            <Link href="/register" className="text-[#cc111f] hover:text-[#ff1a2b] font-bold transition-all underline-offset-4 hover:underline">
-              Daftar Admin
+        <div className="mt-8 pt-6 border-t border-zinc-800/50 text-center">
+          <p className="text-zinc-500 text-[11px] font-medium">
+            New Admin?{' '}
+            <Link href="/register" className="text-[#cc111f] hover:text-[#ff1a2b] font-bold transition-all hover:underline underline-offset-4">
+              Request Account
             </Link>
           </p>
         </div>
