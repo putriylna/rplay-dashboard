@@ -1,7 +1,7 @@
 import { edenTreaty } from '@elysiajs/eden'
 import type { App } from '../types/api-schema' 
 
-export const api = edenTreaty<App>('https://k0edfk-ip-182-8-195-136.tunnelmole.net/', {
+export const api = edenTreaty<App>('https://kfkqig-ip-182-8-194-144.tunnelmole.net/', {
     fetcher: (url, options) => {
         // 1. Ambil token dari localStorage (hanya jika di browser)
         let token = null;

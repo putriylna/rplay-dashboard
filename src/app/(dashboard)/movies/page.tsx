@@ -44,7 +44,7 @@ export default function MoviesPage() {
     title: "",
     synopsis: "",
     duration: 0,
-    genre: "Action",
+    genre: "", // Diinisialisasi kosong untuk multi-select
     rating_age: "SU",
     release_date: "",
     end_date: "",
@@ -79,14 +79,27 @@ export default function MoviesPage() {
     }
   };
 
+  // Logic Toggle Genre
+  const toggleGenre = (g: string) => {
+    const currentGenres = movieForm.genre ? movieForm.genre.split(", ") : [];
+    let newGenres;
+    if (currentGenres.includes(g)) {
+      newGenres = currentGenres.filter((item) => item !== g);
+    } else {
+      newGenres = [...currentGenres, g];
+    }
+    setMovieForm({ ...movieForm, genre: newGenres.join(", ") });
+  };
+
   const filteredMovies = useMemo(() => {
     return movies.filter((m) => {
       const title = m.title || "";
       const matchesSearch = title.toLowerCase().includes(debouncedSearch.toLowerCase());
-      const matchesGenre = selectedGenre === "All" || m.genre === selectedGenre;
+      
+      // Filter genre sekarang mengecek apakah genre yang dipilih ada di dalam string genre film
+      const matchesGenre = selectedGenre === "All" || (m.genre && m.genre.includes(selectedGenre));
       
       let matchesStatus = true;
-      // Logika: Jika isPlaying true masuk ke 'playing', jika false masuk ke 'upcoming'
       if (statusFilter === "playing") {
         matchesStatus = m.isPlaying === true;
       } else if (statusFilter === "upcoming") {
@@ -114,7 +127,7 @@ export default function MoviesPage() {
         title: movie.title,
         synopsis: movie.synopsis,
         duration: movie.duration,
-        genre: movie.genre,
+        genre: movie.genre || "",
         rating_age: movie.ratingAge,
         release_date: movie.releaseDate ? movie.releaseDate.split('T')[0] : "", 
         end_date: movie.endDate ? movie.endDate.split('T')[0] : "",
@@ -125,7 +138,7 @@ export default function MoviesPage() {
     } else {
       setSelectedMovie(null);
       setMovieForm({
-        title: "", synopsis: "", duration: 0, genre: "Action",
+        title: "", synopsis: "", duration: 0, genre: "",
         rating_age: "SU", release_date: "", end_date: "",
         photo_url: "", trailer_url: "", is_playing: true,
       });
@@ -140,6 +153,8 @@ export default function MoviesPage() {
 
   const handleSaveMovie = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!movieForm.genre) return alert("Pilih minimal satu genre!");
+    
     const slug = movieForm.title.toLowerCase().trim().replace(/\s+/g, "-").replace(/[^\w-]+/g, "");
     try {
       if (selectedMovie) {
@@ -416,19 +431,33 @@ export default function MoviesPage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4">
                     <div>
-                      <label className="text-[10px] font-black text-zinc-500 mb-2 block">genre</label>
-                      <select
-                        className="admin-input-modern text-xs font-bold"
-                        value={movieForm.genre}
-                        onChange={(e) => setMovieForm({ ...movieForm, genre: e.target.value })}
-                      >
-                        {GENRES.map(g => <option key={g} value={g}>{g.toLowerCase()}</option>)}
-                      </select>
+                      <label className="text-[10px] font-black text-zinc-500 mb-3 block tracking-widest uppercase">
+                        genres <span className="text-[#cc111f] lowercase">(select multiple)</span>
+                      </label>
+                      <div className="flex flex-wrap gap-2 p-4 bg-zinc-950/50 border border-zinc-800 rounded-2xl">
+                        {GENRES.map((g) => {
+                          const isActive = movieForm.genre.split(", ").includes(g);
+                          return (
+                            <button
+                              key={g}
+                              type="button"
+                              onClick={() => toggleGenre(g)}
+                              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all duration-300 border ${
+                                isActive 
+                                  ? "bg-[#cc111f] border-[#cc111f] text-white shadow-[0_0_15px_rgba(204,17,31,0.3)]" 
+                                  : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700"
+                              }`}
+                            >
+                              {g}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                     <div>
-                      <label className="text-[10px] font-black text-zinc-500 mb-2 block">parental rating</label>
+                      <label className="text-[10px] font-black text-zinc-500 mb-2 block uppercase tracking-widest">parental rating</label>
                       <select
                         className="admin-input-modern text-xs font-bold"
                         value={movieForm.rating_age}
@@ -444,7 +473,7 @@ export default function MoviesPage() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-[10px] font-black text-zinc-500 mb-2 block">start date</label>
+                      <label className="text-[10px] font-black text-zinc-500 mb-2 block uppercase tracking-widest">start date</label>
                       <input
                         type="date"
                         className="admin-input-modern text-xs [color-scheme:dark]"
@@ -454,7 +483,7 @@ export default function MoviesPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-black text-zinc-500 mb-2 block">end date</label>
+                      <label className="text-[10px] font-black text-zinc-500 mb-2 block uppercase tracking-widest">end date</label>
                       <input
                         type="date"
                         className="admin-input-modern text-xs [color-scheme:dark]"
@@ -465,7 +494,7 @@ export default function MoviesPage() {
                   </div>
 
                   <div>
-                    <label className="text-[10px] font-black text-zinc-500 mb-2 block">synopsis</label>
+                    <label className="text-[10px] font-black text-zinc-500 mb-2 block uppercase tracking-widest">synopsis</label>
                     <textarea
                       className="admin-input-modern h-32 text-xs resize-none leading-relaxed"
                       placeholder="movie summary..."

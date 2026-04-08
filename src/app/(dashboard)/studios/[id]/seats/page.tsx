@@ -5,10 +5,12 @@ import { anton } from '@/lib/fonts';
 import { 
   ChevronLeftIcon, 
   ArrowPathIcon,
-  TrashIcon,
-  SquaresPlusIcon,
-  InformationCircleIcon,
-  CloudArrowUpIcon
+  CloudArrowUpIcon,
+  CheckCircleIcon,
+  Squares2X2Icon,
+  UserGroupIcon,
+  TicketIcon,
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
@@ -18,7 +20,8 @@ import { toast, Toaster } from 'sonner';
 
 export default function SeatConfigPage() {
   const params = useParams();
-  const studioId = Number(params.id);
+  const id = params?.id;
+  const studioId = id ? Number(id) : null;
 
   // Management State
   const [rows, setRows] = useState(8);
@@ -26,46 +29,92 @@ export default function SeatConfigPage() {
   const [disabledSeats, setDisabledSeats] = useState<Set<string>>(new Set());
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [currentStudioType, setCurrentStudioType] = useState<string>("");
+
+  // Fitur Bulk State
+  const [allStudios, setAllStudios] = useState<any[]>([]);
+  const [selectedStudioIds, setSelectedStudioIds] = useState<number[]>([]);
 
   const alphabet = useMemo(() => "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""), []);
 
-  /**
-   * 1. LOAD EXISTING DATA (Penting agar perubahan tidak hilang)
-   */
+  // KONFIGURASI BATAS KURSI
+  const SEAT_LIMITS: Record<string, number> = {
+    Reguler: 200,
+    Premiere: 50,
+    IMAX: 300,
+  };
+
+  const currentLimit = SEAT_LIMITS[currentStudioType] || 200;
+  const currentTotal = rows * cols;
+  const isOverLimit = currentTotal > currentLimit;
+
   useEffect(() => {
-    const fetchExistingSeats = async () => {
+    const initData = async () => {
       if (!studioId) return;
       try {
         setIsLoading(true);
-        // Sesuaikan endpoint ini dengan backend Anda (misal: get seats by studioId)
-        const { data, error } = await api.api.studios[studioId].seats.get();
-        
-        if (data && data.length > 0) {
-          // Logika sederhana untuk mendeteksi max rows & cols dari data yang ada
-          const rowChars = data.map((s: any) => s.rowName);
-          const colNums = data.map((s: any) => Number(s.seatNumber));
-          
+        const [{ data: seatData }, { data: studiosList }] = await Promise.all([
+          api.api.studios[studioId].seats.get(),
+          api.api.studios.get()
+        ]);
+
+        const currentStudio = studiosList?.find((s: any) => s.studioId === studioId);
+        if (currentStudio) {
+          setCurrentStudioType(currentStudio.type);
+          const filteredStudios = studiosList.filter((s: any) => s.type === currentStudio.type);
+          setAllStudios(filteredStudios);
+        }
+
+        if (seatData && seatData.length > 0) {
+          const rowChars = seatData.map((s: any) => s.rowName);
+          const colNums = seatData.map((s: any) => Number(s.seatNumber));
           const maxRowIndex = Math.max(...rowChars.map((char: string) => alphabet.indexOf(char)));
           const maxCol = Math.max(...colNums);
 
           setRows(maxRowIndex + 1);
           setCols(maxCol);
           
-          // Jika ada status "INACTIVE" di DB, masukkan ke disabledSeats
           const inactive = new Set<string>(
-            data.filter((s: any) => s.status === 'INACTIVE').map((s: any) => `${s.rowName}${s.seatNumber}`)
+            seatData.filter((s: any) => s.status === 'INACTIVE').map((s: any) => `${s.rowName}${s.seatNumber}`)
           );
           setDisabledSeats(inactive);
         }
+        setSelectedStudioIds([studioId]);
       } catch (err) {
-        console.error("Gagal mengambil data kursi:", err);
+        toast.error("Gagal sinkronisasi arsitektur");
       } finally {
         setIsLoading(false);
       }
     };
-
-    fetchExistingSeats();
+    initData();
   }, [studioId, alphabet]);
+
+  const handleSaveLayout = async () => {
+    if (isOverLimit) return toast.error(`Kapasitas ${currentStudioType} maksimal ${currentLimit} kursi!`);
+    if (selectedStudioIds.length === 0) return toast.error("Pilih minimal satu studio");
+    
+    setIsSaving(true);
+    const promises = selectedStudioIds.map(sid => 
+      api.api.studios.seats.generate.post({
+        studio_id: sid,
+        row_count: rows,
+        seats_per_row: cols,
+        inactive_seats: Array.from(disabledSeats) 
+      })
+    );
+
+    toast.promise(Promise.all(promises), {
+      loading: `Menyinkronkan ${selectedStudioIds.length} Studio...`,
+      success: () => {
+        setIsSaving(false);
+        return `Arsitektur ${currentStudioType} berhasil diterapkan!`;
+      },
+      error: () => {
+        setIsSaving(false);
+        return "Gagal memperbarui arsitektur.";
+      }
+    });
+  };
 
   const toggleSeat = (id: string) => {
     setDisabledSeats(prev => {
@@ -76,193 +125,139 @@ export default function SeatConfigPage() {
     });
   };
 
-  const handleReset = () => {
-    if(confirm("Reset semua pengaturan baris dan kolom?")) {
-      setDisabledSeats(new Set());
-      toast.info("Layout direset ke tampilan standar");
-    }
-  };
-
-  /**
-   * 2. SAVE DATA (Admin Action)
-   */
-  const handleSaveLayout = async () => {
-    if (!studioId) return toast.error("ID Studio tidak ditemukan");
-    
-    setIsSaving(true);
-    
-    // Pastikan backend Anda menerima data 'disabledSeats' 
-    // agar admin bisa benar-benar mengatur lorong jalan
-    const savePromise = api.api.studios.seats.generate.post({
-      studio_id: studioId,
-      row_count: rows,
-      seats_per_row: cols,
-      inactive_seats: Array.from(disabledSeats) // Kirim data lorong ke backend
-    });
-
-    toast.promise(savePromise, {
-      loading: 'Menyimpan konfigurasi permanen...',
-      success: () => {
-        setIsSaving(false);
-        return "Konfigurasi Studio berhasil diperbarui.";
-      },
-      error: (err: any) => {
-        setIsSaving(false);
-        return err.message || "Gagal memperbarui database.";
-      }
-    });
-  };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-black">
-        <ArrowPathIcon className="w-8 h-8 text-[#cc111f] animate-spin" />
-      </div>
-    );
-  }
+  if (isLoading) return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-black gap-4">
+      <ArrowPathIcon className="w-10 h-10 text-[#cc111f] animate-spin" />
+      <p className="text-zinc-500 text-[10px] font-black tracking-[0.3em] animate-pulse">GENERATING BLUEPRINT...</p>
+    </div>
+  );
 
   return (
     <div className="min-h-screen font-montserrat pb-24 px-6 max-w-7xl mx-auto text-zinc-300">
       <Toaster position="top-center" richColors theme="dark" />
       
-      {/* Admin Header */}
+      {/* HEADER */}
       <header className="flex flex-col md:flex-row justify-between items-end gap-6 py-10 border-b border-zinc-800/40 mb-10">
         <div className="space-y-1">
           <Link href="/studios" className="text-zinc-500 text-[10px] font-bold flex items-center gap-1.5 mb-4 hover:text-[#cc111f] transition-all group uppercase tracking-widest">
             <ChevronLeftIcon className="w-3 h-3 group-hover:-translate-x-1 transition-transform" /> 
-            Admin Management
+            Back to Studios
           </Link>
-          <h1 className={`${anton.className} text-4xl tracking-tight italic text-white leading-none`}>
-            Studio <span className="text-[#cc111f]">Architecture</span>
+          <h1 className={`${anton.className} text-5xl tracking-tight italic text-white leading-none`}>
+            Master <span className="text-[#cc111f]">Architecture</span>
           </h1>
-          <p className="text-zinc-500 text-xs font-medium">
-            Pengaturan Struktur Kursi & Lorong Studio <span className="text-zinc-100 px-2 py-0.5 bg-zinc-800 rounded ml-1">#{studioId}</span>
-          </p>
+          <div className="flex items-center gap-2 pt-2">
+            <TicketIcon className="w-4 h-4 text-zinc-600" />
+            <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+              Editing Template: <span className={isOverLimit ? "text-red-500" : "text-white"}>{currentStudioType}</span>
+            </span>
+          </div>
         </div>
         
-        {/* Editor Controls */}
-        <div className="flex items-center gap-4 bg-zinc-900/80 p-3 rounded-2xl border border-zinc-700/50 shadow-2xl backdrop-blur-xl">
-          <div className="flex items-center gap-6 px-4 border-r border-zinc-800">
+        <div className={`flex items-center gap-4 bg-zinc-900/40 p-3 rounded-2xl border ${isOverLimit ? 'border-red-500/50' : 'border-zinc-700/30'} shadow-2xl backdrop-blur-xl transition-colors`}>
+          <div className="flex items-center gap-6 px-4 border-r border-zinc-800/60">
             <div className="flex flex-col">
-              <span className="text-[9px] text-zinc-500 font-bold tracking-wider mb-1">JUMLAH BARIS</span>
-              <input 
-                type="number" max="26" min="1"
-                value={rows} 
-                onChange={(e) => setRows(Math.min(26, Math.max(1, Number(e.target.value))))} 
-                className="bg-zinc-800/50 text-white font-black w-12 h-8 rounded text-center outline-none focus:ring-1 focus:ring-[#cc111f] transition-all" 
-              />
+              <span className="text-[9px] text-zinc-500 font-bold mb-1 uppercase tracking-tighter text-center">Rows</span>
+              <input type="number" min="1" max="26" value={rows} onChange={(e) => setRows(Number(e.target.value))} className="bg-zinc-800/50 text-white font-black w-12 h-9 rounded-lg text-center outline-none border border-zinc-700/50 focus:border-[#cc111f] transition-colors" />
             </div>
             <div className="flex flex-col">
-              <span className="text-[9px] text-zinc-500 font-bold tracking-wider mb-1">KURSI PER BARIS</span>
-              <input 
-                type="number" min="1" max="24"
-                value={cols} 
-                onChange={(e) => setCols(Math.min(24, Math.max(1, Number(e.target.value))))} 
-                className="bg-zinc-800/50 text-white font-black w-12 h-8 rounded text-center outline-none focus:ring-1 focus:ring-[#cc111f] transition-all" 
-              />
+              <span className="text-[9px] text-zinc-500 font-bold mb-1 uppercase tracking-tighter text-center">Cols</span>
+              <input type="number" min="1" max="30" value={cols} onChange={(e) => setCols(Number(e.target.value))} className="bg-zinc-800/50 text-white font-black w-12 h-9 rounded-lg text-center outline-none border border-zinc-700/50 focus:border-[#cc111f] transition-colors" />
             </div>
           </div>
 
-          <div className="flex gap-2">
-            <button 
-              onClick={handleReset}
-              className="p-3 rounded-xl bg-zinc-800 hover:bg-red-950/30 hover:border-red-900 transition-all text-zinc-400 hover:text-red-500 border border-zinc-700"
-            >
-              <TrashIcon className="w-5 h-5" />
-            </button>
-            <Button 
-              onClick={handleSaveLayout}
-              disabled={isSaving}
-              className="py-3 px-8 text-[11px] font-bold tracking-widest flex items-center gap-3 rounded-xl transition-all shadow-xl bg-[#cc111f] text-white hover:bg-red-700 border-none"
-            >
-              {isSaving ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <CloudArrowUpIcon className="w-5 h-5" />}
-              Publish Layout
-            </Button>
-          </div>
+          <Button 
+            onClick={handleSaveLayout} 
+            disabled={isSaving || isOverLimit} 
+            className={`${isOverLimit ? 'bg-zinc-800 cursor-not-allowed' : 'bg-[#cc111f] hover:bg-white hover:text-black'} text-white py-3 px-8 rounded-xl flex items-center gap-3 transition-all active:scale-95 disabled:opacity-50 shadow-lg`}
+          >
+            {isSaving ? <ArrowPathIcon className="w-5 h-5 animate-spin" /> : <CloudArrowUpIcon className="w-5 h-5 stroke-[2.5]" />}
+            <span className="font-bold text-sm uppercase tracking-widest">Deploy Architecture</span>
+          </Button>
         </div>
       </header>
 
       <div className="grid lg:grid-cols-12 gap-10">
         
-        {/* Statistics & Legend */}
+        {/* TARGET SELECTOR & STATS */}
         <div className="lg:col-span-3 space-y-4">
-          <div className="bg-zinc-900/40 border border-zinc-800/60 p-6 rounded-[2rem]">
-            <h3 className="text-[10px] font-bold text-zinc-400 mb-6 flex items-center gap-2 tracking-[0.2em] uppercase">
-              Legend Editor
-            </h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-zinc-800/30 rounded-xl border border-zinc-700/30">
-                <div className="flex items-center gap-3">
-                  <div className="w-5 h-5 bg-[#cc111f] rounded-md shadow-[0_0_10px_rgba(204,17,31,0.3)]"></div>
-                  <span className="text-[11px] font-bold">Kursi Aktif</span>
+          {/* Warning Card if Over Limit */}
+          {isOverLimit && (
+            <div className="bg-red-500/10 border border-red-500/50 p-4 rounded-2xl flex items-start gap-3 animate-bounce">
+              <ExclamationTriangleIcon className="w-5 h-5 text-red-500 shrink-0" />
+              <p className="text-[10px] font-bold text-red-200 uppercase leading-relaxed">
+                Kapasitas melebihi batas {currentStudioType} ({currentLimit} Kursi). Kurangi Baris/Kolom!
+              </p>
+            </div>
+          )}
+
+          <div className="bg-zinc-900/40 border border-zinc-800/60 p-6 rounded-[2.5rem] shadow-xl backdrop-blur-sm">
+            <div className="flex items-center justify-between mb-6">
+               <div className="flex items-center gap-2">
+                 <Squares2X2Icon className="w-4 h-4 text-[#cc111f]" />
+                 <h3 className="text-[10px] font-black text-white tracking-widest uppercase">Target {currentStudioType}</h3>
+               </div>
+            </div>
+            
+            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+              {allStudios.map((s) => (
+                <div key={s.studioId} className="flex items-center justify-between p-4 rounded-2xl border bg-zinc-900/40 border-zinc-800/60 text-zinc-400">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase italic">{s.namaStudio}</span>
+                    <span className="text-[8px] opacity-40 font-bold">{s.cinema?.namaBioskop}</span>
+                  </div>
+                  <CheckCircleIcon className="w-5 h-5 text-[#cc111f]" />
                 </div>
-                <span className="text-[10px] text-zinc-500">Dijual</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-zinc-800/30 rounded-xl border border-zinc-700/30">
-                <div className="flex items-center gap-3">
-                  <div className="w-5 h-5 bg-zinc-950 border border-zinc-700 rounded-md"></div>
-                  <span className="text-[11px] font-bold text-zinc-500">Area Kosong</span>
-                </div>
-                <span className="text-[10px] text-zinc-500">Lorong</span>
-              </div>
+              ))}
             </div>
           </div>
-
-          <div className="bg-zinc-900/20 border border-zinc-800 p-8 rounded-[2rem] text-center shadow-inner border-dashed">
-            <p className="text-zinc-500 text-[10px] font-bold tracking-widest mb-2 uppercase">Kapasitas Produksi</p>
-            <div className="text-6xl font-black italic text-white">
-              { (rows * cols) - disabledSeats.size }
+          
+          <div className={`bg-gradient-to-br ${isOverLimit ? 'from-red-900/40 to-black border-red-500' : 'from-zinc-900/80 to-black border-zinc-800'} border p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden transition-colors`}>
+            <p className="text-zinc-500 text-[10px] font-bold tracking-[0.2em] mb-2 uppercase italic">Blueprint Capacity</p>
+            <div className={`text-6xl font-black italic ${isOverLimit ? 'text-red-500' : 'text-white'}`}>
+              {currentTotal}
+              <span className="text-lg text-[#cc111f] not-italic ml-2">/ {currentLimit}</span>
             </div>
-            <p className="mt-2 text-zinc-600 text-[9px] font-bold">Total Physical Seats</p>
           </div>
         </div>
 
-        {/* Blueprint Canvas */}
-        <div className="lg:col-span-9 bg-zinc-950 rounded-[3.5rem] p-12 border border-zinc-800/50 shadow-2xl relative">
-          
-          {/* Visual Screen Reference */}
-          <div className="w-full max-w-xl mx-auto mb-20 relative text-center">
-            <div className="w-full h-1 bg-gradient-to-r from-transparent via-[#cc111f]/40 to-transparent"></div>
-            <p className="text-zinc-700 text-[9px] font-black tracking-[1.5em] mt-4 uppercase">Front / Screen Side</p>
+        {/* BLUEPRINT CANVAS */}
+        <div className="lg:col-span-9 bg-zinc-950 rounded-[4rem] p-16 border border-zinc-800/40 relative overflow-hidden">
+          {/* SCREEN */}
+          <div className="w-full max-w-2xl mx-auto mb-20 text-center relative">
+            <div className="w-full h-[6px] bg-zinc-900 rounded-full overflow-hidden">
+              <div className="w-full h-full bg-gradient-to-r from-transparent via-[#cc111f] to-transparent animate-pulse shadow-[0_0_20px_rgba(204,17,31,0.5)]"></div>
+            </div>
           </div>
 
-          {/* Scrollable Blueprint */}
-          <div className="w-full overflow-x-auto pb-8 custom-scrollbar">
+          {/* GRID */}
+          <div className="w-full overflow-x-auto pb-10 custom-scrollbar flex justify-center">
             <div 
-              className="grid gap-2.5 mx-auto"
+              className="grid gap-3 p-4" 
               style={{ 
-                gridTemplateColumns: `40px repeat(${cols}, 36px)`,
-                width: 'fit-content'
+                gridTemplateColumns: `40px repeat(${cols}, 40px)`,
+                width: 'fit-content' 
               }}
             >
               {Array.from({ length: rows }).map((_, r) => (
                 <React.Fragment key={`row-${r}`}>
-                  {/* Row Index */}
-                  <div className="flex items-center justify-center font-black text-zinc-700 text-xs italic">
-                    {alphabet[r]}
-                  </div>
-                  
-                  {/* Seat Matrix */}
+                  <div className="flex items-center justify-center font-black text-zinc-800 text-sm italic pr-2">{alphabet[r]}</div>
                   {Array.from({ length: cols }).map((_, c) => {
                     const seatId = `${alphabet[r]}${c + 1}`;
                     const isDisabled = disabledSeats.has(seatId);
                     return (
                       <button 
-                        key={seatId}
+                        key={seatId} 
                         onClick={() => toggleSeat(seatId)}
-                        className={`
-                          w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-200 border
-                          ${isDisabled 
-                            ? 'bg-transparent border-zinc-800 hover:border-zinc-600' 
-                            : 'bg-zinc-900 border-zinc-800 hover:border-[#cc111f] hover:z-10 shadow-lg'
-                          }
-                        `}
+                        className={`group relative w-10 h-10 rounded-xl flex items-center justify-center transition-all border-2 ${
+                          isDisabled 
+                          ? 'bg-transparent border-dashed border-zinc-900' 
+                          : isOverLimit 
+                            ? 'bg-red-500/10 border-red-500/20' 
+                            : 'bg-zinc-900 border-zinc-800 hover:border-[#cc111f]'
+                        }`}
                       >
-                        {!isDisabled && (
-                          <span className="text-[9px] font-black text-zinc-500">
-                            {c + 1}
-                          </span>
-                        )}
+                        {!isDisabled && <span className="text-[10px] font-black text-zinc-600 group-hover:text-white">{c + 1}</span>}
                       </button>
                     );
                   })}
@@ -270,19 +265,8 @@ export default function SeatConfigPage() {
               ))}
             </div>
           </div>
-
-          <div className="absolute bottom-10 left-1/2 -translate-x-1/2 text-zinc-800 font-bold text-[8px] tracking-[1em] uppercase">
-             Studio Floor Blueprint
-          </div>
         </div>
-
       </div>
-
-      <style jsx global>{`
-        .custom-scrollbar::-webkit-scrollbar { height: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cc111f; }
-      `}</style>
     </div>
   );
 }
