@@ -75,6 +75,7 @@ export default function SchedulesPage() {
         const scheduleDateTime = new Date(`${s.play_at.date}T${s.play_at.time}`);
         return scheduleDateTime > now;
       });
+      
       setSchedules(activeData);
     } catch (err) {
       toast.error("Gagal memuat jadwal");
