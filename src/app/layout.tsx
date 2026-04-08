@@ -10,15 +10,13 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${anton.variable} ${montserrat.variable}`}>
       <body className="bg-black text-white font-montserrat">
-        {/* [2] letakkan toaster di sini agar bisa diakses seluruh halaman */}
         <Toaster
           position="top-right"
           reverseOrder={false}
           containerStyle={{
-            zIndex: 99999, // Tambahkan ini agar di atas modal manapun
+            zIndex: 99999,
           }}
           toastOptions={{
-            // kustomisasi tampilan agar senada dengan tema dark mode kamu
             style: {
               background: "#18181b",
               color: "#fff",

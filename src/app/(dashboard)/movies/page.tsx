@@ -188,10 +188,10 @@ export default function MoviesPage() {
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 border-b border-zinc-800/50 pb-8">
         <div className="space-y-1">
           <h1 className={`${anton.className} text-4xl lg:text-6xl tracking-tight leading-none text-white`}>
-            movie <span className="text-[#cc111f]">catalog</span>
+            Movie <span className="text-[#cc111f]">catalog</span>
           </h1>
           <p className="text-zinc-500 text-sm font-medium">
-            menampilkan {filteredMovies.length} film dalam database rplay.
+            Menampilkan {filteredMovies.length} film dalam database rplay.
           </p>
         </div>
 
@@ -200,7 +200,7 @@ export default function MoviesPage() {
           className="bg-white hover:bg-[#cc111f] hover:text-white text-black flex items-center justify-center gap-2 px-8 h-[52px] rounded-2xl transition-all shadow-xl active:scale-95 font-bold text-sm tracking-wider"
         >
           <PlusIcon className="w-5 h-5 stroke-[3px]" />
-          add movie
+          Add Movie
         </button>
       </div>
 
@@ -218,7 +218,7 @@ export default function MoviesPage() {
         </div>
 
         <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-800">
-          {["all", "playing", "upcoming"].map((s) => (
+          {["All", "Playing", "Upcoming"].map((s) => (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
@@ -258,7 +258,7 @@ export default function MoviesPage() {
       ) : paginatedMovies.length === 0 ? (
         <div className="py-20 text-center flex flex-col items-center gap-4 bg-zinc-900/20 rounded-[3rem] border-2 border-dashed border-zinc-800">
           <FilmIcon className="w-16 h-16 text-zinc-800" />
-          <p className="text-zinc-500 font-bold tracking-widest">no movies found</p>
+          <p className="text-zinc-500 font-bold tracking-widest">No movies found</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
@@ -290,7 +290,7 @@ export default function MoviesPage() {
 
                 {movie.isPlaying && (
                   <div className="absolute top-4 left-4 bg-[#cc111f] text-white text-[8px] font-black px-3 py-1 rounded-full">
-                    now playing
+                    Now Playing
                   </div>
                 )}
                 <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-md text-[#cc111f] text-[9px] font-black border border-white/10 px-2 py-1 rounded-lg">
@@ -363,7 +363,7 @@ export default function MoviesPage() {
                   <FilmIcon className="w-6 h-6 text-[#cc111f]" />
                 </div>
                 <h2 className="text-xl font-black text-white tracking-tighter">
-                  {selectedMovie ? "modify entry" : "new release"}
+                  {selectedMovie ? "Modify Entry" : "New Release"}
                 </h2>
               </div>
               <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-zinc-800 rounded-full text-zinc-500 hover:text-white transition-colors">
@@ -380,13 +380,13 @@ export default function MoviesPage() {
                     ) : (
                       <div className="flex flex-col items-center justify-center h-full text-zinc-800">
                         <PhotoIcon className="w-12 h-12 mb-3 opacity-20" />
-                        <span className="text-[10px] font-black opacity-40">drop poster url</span>
+                        <span className="text-[10px] font-black opacity-40">Drop poster url</span>
                       </div>
                     )}
                   </div>
                   <div className="space-y-4">
                     <div>
-                      <label className="text-[10px] font-black text-zinc-500 mb-2 block tracking-widest">poster url</label>
+                      <label className="text-[10px] font-black text-zinc-500 mb-2 block tracking-widest">Poster url</label>
                       <input
                         type="text"
                         className="admin-input-modern text-[10px]"
@@ -396,7 +396,7 @@ export default function MoviesPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-black text-zinc-500 mb-2 block tracking-widest">video trailer url</label>
+                      <label className="text-[10px] font-black text-zinc-500 mb-2 block tracking-widest">Video trailer url</label>
                       <input
                         type="text"
                         className="admin-input-modern text-[10px]"
@@ -406,7 +406,7 @@ export default function MoviesPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-black text-zinc-500 mb-2 block tracking-widest">duration (min)</label>
+                      <label className="text-[10px] font-black text-zinc-500 mb-2 block tracking-widest">Duration (min)</label>
                       <input
                         type="number"
                         className="admin-input-modern text-[10px]"
@@ -420,11 +420,11 @@ export default function MoviesPage() {
 
                 <div className="md:col-span-2 space-y-6">
                   <div>
-                    <label className="text-[10px] font-black text-zinc-500 mb-2 block tracking-widest">movie title</label>
+                    <label className="text-[10px] font-black text-zinc-500 mb-2 block tracking-widest">Movie title</label>
                     <input
                       type="text"
                       className="admin-input-modern font-black text-lg placeholder:opacity-20"
-                      placeholder="enter title"
+                      placeholder="Enter title..."
                       value={movieForm.title}
                       onChange={(e) => setMovieForm({ ...movieForm, title: e.target.value })}
                       required
@@ -457,7 +457,7 @@ export default function MoviesPage() {
                       </div>
                     </div>
                     <div>
-                      <label className="text-[10px] font-black text-zinc-500 mb-2 block uppercase tracking-widest">parental rating</label>
+                      <label className="text-[10px] font-black text-zinc-500 mb-2 block uppercase tracking-widest">Parental rating</label>
                       <select
                         className="admin-input-modern text-xs font-bold"
                         value={movieForm.rating_age}
@@ -473,7 +473,7 @@ export default function MoviesPage() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-[10px] font-black text-zinc-500 mb-2 block uppercase tracking-widest">start date</label>
+                      <label className="text-[10px] font-black text-zinc-500 mb-2 block uppercase tracking-widest">Start date</label>
                       <input
                         type="date"
                         className="admin-input-modern text-xs [color-scheme:dark]"
@@ -483,7 +483,7 @@ export default function MoviesPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-black text-zinc-500 mb-2 block uppercase tracking-widest">end date</label>
+                      <label className="text-[10px] font-black text-zinc-500 mb-2 block uppercase tracking-widest">End date</label>
                       <input
                         type="date"
                         className="admin-input-modern text-xs [color-scheme:dark]"
@@ -494,10 +494,10 @@ export default function MoviesPage() {
                   </div>
 
                   <div>
-                    <label className="text-[10px] font-black text-zinc-500 mb-2 block uppercase tracking-widest">synopsis</label>
+                    <label className="text-[10px] font-black text-zinc-500 mb-2 block uppercase tracking-widest">Synopsis</label>
                     <textarea
                       className="admin-input-modern h-32 text-xs resize-none leading-relaxed"
-                      placeholder="movie summary..."
+                      placeholder="Movie summary..."
                       value={movieForm.synopsis}
                       onChange={(e) => setMovieForm({ ...movieForm, synopsis: e.target.value })}
                     />
@@ -517,14 +517,14 @@ export default function MoviesPage() {
                     <div className={`w-12 h-6 rounded-full transition-all duration-300 ${movieForm.is_playing ? 'bg-[#cc111f]' : 'bg-zinc-800'}`}></div>
                     <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${movieForm.is_playing ? 'translate-x-6' : 'translate-x-0'}`}></div>
                   </div>
-                  <span className="text-xs font-black text-zinc-400 group-hover:text-white transition-colors">set as playing now</span>
+                  <span className="text-xs font-black text-zinc-400 group-hover:text-white transition-colors">Set as playing now</span>
                 </label>
 
                 <button
                   type="submit"
                   className="bg-[#cc111f] hover:bg-white hover:text-black text-white px-12 py-4 rounded-2xl text-xs font-black transition-all transform active:scale-95 shadow-xl"
                 >
-                  {selectedMovie ? "confirm update" : "release movie"}
+                  {selectedMovie ? "Confirm update" : "Release movie"}
                 </button>
               </div>
             </form>
