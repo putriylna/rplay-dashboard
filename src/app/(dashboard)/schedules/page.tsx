@@ -45,13 +45,11 @@ export default function SchedulesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // States Pencarian & Filter
   const [searchQuery, setSearchQuery] = useState("");
   const [activeDate, setActiveDate] = useState(new Date().toISOString().split("T")[0]);
   const [movieSearch, setMovieSearch] = useState("");
   const [studioSearch, setStudioSearch] = useState("");
 
-  // State Form, Batch, & Edit
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState<ScheduleFormData>({
     movie_id: "",
@@ -64,12 +62,14 @@ export default function SchedulesPage() {
   const [tempTime, setTempTime] = useState("");
   const [openGroups, setOpenGroups] = useState<string[]>([]);
 
-  // --- LOGIC: Fetch ---
   const fetchSchedules = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await scheduleService.getAll();
       const rawData = Array.isArray(data) ? data : (data as any)?.data || [];
+      
+      // Catatan: Pastikan filter waktu ini tidak menyembunyikan jadwal yang baru kamu buat 
+      // (Jika jam tayang yang kamu buat sudah lewat dari jam sekarang, dia akan hilang dari list)
       const now = new Date();
       const activeData = rawData.filter((s: Schedule) => {
         const scheduleDateTime = new Date(`${s.play_at.date}T${s.play_at.time}`);
@@ -85,15 +85,18 @@ export default function SchedulesPage() {
 
   useEffect(() => {
     const loadData = async () => {
-      const [m, s] = await Promise.all([movieService.getAll(), studioService.getAll()]);
-      setMovies(m || []);
-      setStudios(s || []);
-      fetchSchedules();
+      try {
+        const [m, s] = await Promise.all([movieService.getAll(), studioService.getAll()]);
+        setMovies(m || []);
+        setStudios(s || []);
+        fetchSchedules();
+      } catch (error) {
+        console.error("Error loading initial data", error);
+      }
     };
     loadData();
   }, [fetchSchedules]);
 
-  // --- LOGIC: Memos ---
   const filteredMovies = useMemo(() => {
     return movies.filter((m) => m.title.toLowerCase().includes(movieSearch.toLowerCase()));
   }, [movies, movieSearch]);
@@ -122,7 +125,6 @@ export default function SchedulesPage() {
     return Object.values(groups);
   }, [schedules, searchQuery, activeDate]);
 
-  // --- HANDLERS ---
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingId(null);
@@ -130,6 +132,7 @@ export default function SchedulesPage() {
     setScheduleBatch([]);
     setMovieSearch("");
     setStudioSearch("");
+    setTempTime("");
   };
 
   const toggleDate = (date: string) => {
@@ -146,6 +149,77 @@ export default function SchedulesPage() {
     if (formData.show_times.includes(tempTime)) return toast.error("Jam sudah ada");
     setFormData(prev => ({ ...prev, show_times: [...prev.show_times, tempTime].sort() }));
     setTempTime("");
+  };
+
+  const addToBatch = () => {
+    if (!formData.movie_id || !formData.studio_id || formData.show_dates.length === 0 || formData.show_times.length === 0 || !formData.price) {
+      return toast.error("Lengkapi data jadwal sebelum menambah antrean");
+    }
+
+    const selectedMovie = movies.find(m => m.movieId.toString() === formData.movie_id);
+    const selectedStudio = studios.find(s => s.studioId.toString() === formData.studio_id);
+
+    const newItem: ScheduleBatchItem = {
+      id: Date.now(),
+      movie_name: selectedMovie?.title || "",
+      studio_name: selectedStudio?.namaStudio || "",
+      cinema_name: selectedStudio?.cinema?.namaBioskop || "",
+      ...formData
+    };
+
+    setScheduleBatch(prev => [...prev, newItem]);
+    // Reset form kecuali film & studio jika ingin menambah jadwal di studio yang sama dengan cepat
+    setFormData(prev => ({ ...prev, show_dates: [], show_times: [], price: "" }));
+    toast.success("Ditambahkan ke antrean");
+  };
+
+  const handleSaveAll = async () => {
+    const loadingToast = toast.loading(editingId ? "Memperbarui..." : "Menerbitkan jadwal...");
+    
+    try {
+      if (editingId) {
+        // --- LOGIKA EDIT ---
+        await scheduleService.update(editingId, {
+          movie_id: Number(formData.movie_id),
+          studio_id: Number(formData.studio_id),
+          show_date: formData.show_dates[0],
+          show_time: formData.show_times[0],
+          price: Number(formData.price),
+        });
+        toast.success("Jadwal diperbarui!", { id: loadingToast });
+      } else {
+        // --- LOGIKA CREATE BATCH ---
+        let finalBatch = [...scheduleBatch];
+        
+        // Jika masih ada data di form yang belum di klik "Add to Batch", masukkan otomatis
+        if (formData.movie_id && formData.show_dates.length > 0 && formData.show_times.length > 0) {
+          finalBatch.push({ id: Date.now(), movie_name: "", studio_name: "", cinema_name: "", ...formData });
+        }
+
+        if (finalBatch.length === 0) {
+          toast.dismiss(loadingToast);
+          return toast.error("Tidak ada data untuk disimpan");
+        }
+
+        // Kirim semua item ke server
+        await Promise.all(finalBatch.map(item =>
+          scheduleService.create({
+            movie_id: Number(item.movie_id),
+            studio_id: Number(item.studio_id),
+            show_dates: item.show_dates,
+            show_times: item.show_times,
+            price: Number(item.price),
+          })
+        ));
+        toast.success(`Berhasil menerbitkan ${finalBatch.length} grup jadwal!`, { id: loadingToast });
+      }
+      
+      handleCloseModal();
+      fetchSchedules();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Gagal menyimpan jadwal", { id: loadingToast });
+    }
   };
 
   const handleDelete = async (id: number) => {
@@ -170,66 +244,6 @@ export default function SchedulesPage() {
       price: s.price.toString(),
     });
     setIsModalOpen(true);
-  };
-
-  const addToBatch = () => {
-    if (!formData.movie_id || !formData.studio_id || formData.show_dates.length === 0 || formData.show_times.length === 0 || !formData.price) {
-      return toast.error("Lengkapi data jadwal");
-    }
-
-    const selectedMovie = movies.find(m => m.movieId.toString() === formData.movie_id);
-    const selectedStudio = studios.find(s => s.studioId.toString() === formData.studio_id);
-
-    const newItem: ScheduleBatchItem = {
-      id: Date.now(),
-      movie_name: selectedMovie?.title || "",
-      studio_name: selectedStudio?.namaStudio || "",
-      cinema_name: selectedStudio?.cinema?.namaBioskop || "",
-      ...formData
-    };
-
-    setScheduleBatch(prev => [...prev, newItem]);
-    setFormData(prev => ({ ...prev, show_dates: [], show_times: [], price: "" }));
-    toast.success("Ditambahkan ke antrean");
-  };
-
-  const handleSaveAll = async () => {
-    const loadingToast = toast.loading(editingId ? "Memperbarui..." : "Menerbitkan...");
-    try {
-      if (editingId) {
-        await scheduleService.update(editingId, {
-          movie_id: Number(formData.movie_id),
-          studio_id: Number(formData.studio_id),
-          show_date: formData.show_dates[0],
-          show_time: formData.show_times[0],
-          price: Number(formData.price),
-        });
-        toast.success("Jadwal diperbarui!", { id: loadingToast });
-      } else {
-        let finalBatch = [...scheduleBatch];
-        if (formData.movie_id && formData.show_dates.length > 0 && formData.show_times.length > 0) {
-          finalBatch.push({ id: Date.now(), movie_name: "", studio_name: "", cinema_name: "", ...formData });
-        }
-        if (finalBatch.length === 0) {
-          toast.dismiss(loadingToast);
-          return toast.error("Antrean kosong");
-        }
-        await Promise.all(finalBatch.map(item =>
-          scheduleService.create({
-            movie_id: Number(item.movie_id),
-            studio_id: Number(item.studio_id),
-            show_dates: item.show_dates,
-            show_times: item.show_times,
-            price: Number(item.price),
-          })
-        ));
-        toast.success("Semua jadwal diterbitkan!", { id: loadingToast });
-      }
-      handleCloseModal();
-      fetchSchedules();
-    } catch (err: any) {
-      toast.error(err.message || "Gagal menyimpan", { id: loadingToast });
-    }
   };
 
   return (
@@ -415,10 +429,10 @@ export default function SchedulesPage() {
 
                       <div className="space-y-3">
                         <div className="flex items-start justify-between gap-2">
-                           <div className="p-2 bg-zinc-900 rounded-lg border border-zinc-800">
+                            <div className="p-2 bg-zinc-900 rounded-lg border border-zinc-800">
                                 <FilmIcon className="w-4 h-4 text-zinc-500" />
-                           </div>
-                           <span className="text-[10px] bg-[#cc111f]/10 text-[#cc111f] px-2 py-1 rounded-full font-bold uppercase tracking-wider">{s.location.studio}</span>
+                            </div>
+                            <span className="text-[10px] bg-[#cc111f]/10 text-[#cc111f] px-2 py-1 rounded-full font-bold uppercase tracking-wider">{s.location.studio}</span>
                         </div>
                         
                         <div>
