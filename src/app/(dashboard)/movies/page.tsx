@@ -20,6 +20,7 @@ import {
 import { movieService } from "@/services/movieService";
 import CastModal from "@/components/dashboard/CastModal";
 import { Movie, Actor } from "@/types";
+import toast, { Toaster } from "react-hot-toast"; // Import Toast
 
 const ITEMS_PER_PAGE = 8;
 const GENRES = ["Action", "Horror", "Comedy", "Drama", "Sci-Fi", "Animation", "Thriller"];
@@ -44,7 +45,7 @@ export default function MoviesPage() {
     title: "",
     synopsis: "",
     duration: 0,
-    genre: "", // Diinisialisasi kosong untuk multi-select
+    genre: "",
     rating_age: "SU",
     release_date: "",
     end_date: "",
@@ -79,7 +80,6 @@ export default function MoviesPage() {
     }
   };
 
-  // Logic Toggle Genre
   const toggleGenre = (g: string) => {
     const currentGenres = movieForm.genre ? movieForm.genre.split(", ") : [];
     let newGenres;
@@ -95,14 +95,12 @@ export default function MoviesPage() {
     return movies.filter((m) => {
       const title = m.title || "";
       const matchesSearch = title.toLowerCase().includes(debouncedSearch.toLowerCase());
-      
-      // Filter genre sekarang mengecek apakah genre yang dipilih ada di dalam string genre film
       const matchesGenre = selectedGenre === "All" || (m.genre && m.genre.includes(selectedGenre));
       
       let matchesStatus = true;
-      if (statusFilter === "playing") {
+      if (statusFilter === "Playing") {
         matchesStatus = m.isPlaying === true;
-      } else if (statusFilter === "upcoming") {
+      } else if (statusFilter === "Upcoming") {
         matchesStatus = m.isPlaying === false;
       }
 
@@ -153,37 +151,66 @@ export default function MoviesPage() {
 
   const handleSaveMovie = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!movieForm.genre) return alert("Pilih minimal satu genre!");
+    if (!movieForm.genre) return toast.error("Pilih minimal satu genre!");
     
     const slug = movieForm.title.toLowerCase().trim().replace(/\s+/g, "-").replace(/[^\w-]+/g, "");
     try {
       if (selectedMovie) {
         await movieService.update(selectedMovie.movieId, { ...movieForm, slug });
+        toast.success("Movie updated!");
       } else {
         await movieService.create({ ...movieForm, slug });
+        toast.success("Movie released!");
       }
       setIsModalOpen(false);
       loadData();
     } catch (err: any) {
-      alert(err.message || "gagal menyimpan data.");
+      toast.error(err.message || "Gagal menyimpan data.");
     }
   };
 
-  const handleDeleteMovie = async (id: number) => {
-    if (confirm("hapus film secara permanen?")) {
-      try {
-        await movieService.delete(id);
-        loadData();
-      } catch (err) {
-        alert("gagal menghapus film");
-      }
-    }
+  // --- LOGIC KONFIRMASI HAPUS CUSTOM (SESUAI GAMBAR) ---
+  const confirmDelete = (movie: Movie) => {
+    toast.custom((t) => (
+      <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} bg-[#111111] border border-white/5 p-6 rounded-3xl shadow-2xl flex flex-col items-center min-w-[320px]`}>
+        <p className="text-white text-sm font-bold mb-6 text-center leading-relaxed">
+          Apakah kamu ingin menghapus film <br/>
+          <span className="text-red-600">"{movie.title}"</span> secara permanen?
+        </p>
+        <div className="flex gap-3">
+          <button
+            onClick={async () => {
+              toast.dismiss(t.id);
+              try {
+                await movieService.delete(movie.movieId);
+                loadData();
+                toast.success("Movie deleted");
+              } catch (err) {
+                toast.error("Failed to delete");
+              }
+            }}
+            className="bg-[#cc111f] text-white px-8 py-2 rounded-full text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all"
+          >
+            Hapus
+          </button>
+          <button
+            onClick={() => toast.dismiss(t.id)}
+            className="bg-[#222222] text-zinc-400 px-8 py-2 rounded-full text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all"
+          >
+            Batal
+          </button>
+        </div>
+      </div>
+    ), { position: 'top-center', duration: 4000 });
   };
 
   if (!mounted) return null;
 
   return (
     <div className="p-6 lg:p-10 space-y-8 max-w-[1600px] mx-auto text-white">
+      {/* Toast Container */}
+      <Toaster />
+
       {/* header */}
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 border-b border-zinc-800/50 pb-8">
         <div className="space-y-1">
@@ -282,7 +309,10 @@ export default function MoviesPage() {
                       <button onClick={() => handleOpenMovie(movie)} className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center hover:bg-zinc-800 hover:text-white transition-all transform hover:scale-110">
                         <PencilSquareIcon className="w-5 h-5" />
                       </button>
-                      <button onClick={() => handleDeleteMovie(movie.movieId)} className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center hover:bg-red-600 hover:text-white transition-all transform hover:scale-110">
+                      <button 
+                        onClick={() => confirmDelete(movie)} 
+                        className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center hover:bg-red-600 hover:text-white transition-all transform hover:scale-110"
+                      >
                         <TrashIcon className="w-5 h-5" />
                       </button>
                     </div>
@@ -557,6 +587,18 @@ export default function MoviesPage() {
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #222; border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cc111f; }
+
+        /* Animation for Toast */
+        @keyframes enter {
+          from { transform: translateY(-20px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes leave {
+          from { transform: translateY(0); opacity: 1; }
+          to { transform: translateY(-20px); opacity: 0; }
+        }
+        .animate-enter { animation: enter 0.3s ease-out; }
+        .animate-leave { animation: leave 0.3s ease-in forwards; }
       `}</style>
     </div>
   );

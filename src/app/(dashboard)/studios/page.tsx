@@ -173,7 +173,7 @@ export default function StudiosPage() {
           <button onClick={() => toast.dismiss(t.id)} className="bg-zinc-800 text-zinc-400 px-3 py-1.5 rounded-lg text-xs font-bold">Batal</button>
         </div>
       </div>
-    ), { style: { background: "#18181b", border: "1px solid #27272a" } });
+    ), { style: { background: "#0a0a0a", border: "1px solid #27272a" } });
   };
 
   return (
