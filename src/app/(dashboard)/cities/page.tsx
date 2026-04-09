@@ -4,11 +4,10 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { anton } from '@/lib/fonts';
 import { 
   MapIcon, TrashIcon, PlusIcon, ArrowPathIcon, 
-  MagnifyingGlassIcon, InboxIcon, mapPinIcon 
+  MagnifyingGlassIcon, InboxIcon 
 } from '@heroicons/react/24/outline';
 import { api } from '@/lib/api';
-import toast from 'react-hot-toast';
-import { cn } from '@/lib/utils';
+import toast, { Toaster } from 'react-hot-toast';
 
 // --- SKELETON COMPONENT ---
 const CitySkeleton = () => (
@@ -50,7 +49,7 @@ export default function CitiesPage() {
     fetchCities();
   }, [fetchCities]);
 
-  // --- 2. Filtering Logic (Untuk mendukung data banyak) ---
+  // --- 2. Filtering Logic ---
   const filteredCities = useMemo(() => {
     return cities.filter(city => 
       city.cityName.toLowerCase().includes(searchQuery.toLowerCase())
@@ -77,7 +76,7 @@ export default function CitiesPage() {
       }
 
       if (data) {
-        toast.success(`Kota ${newCityName} berhasil ditambahkan`, { id: loadToast });
+        toast.success(`Kota ${newCityName} ditambahkan`, { id: loadToast });
         setNewCityName("");
         fetchCities(); 
       }
@@ -88,44 +87,53 @@ export default function CitiesPage() {
     }
   };
 
-  // --- 4. Hapus Data ---
-  const deleteCity = async (id: number, name: string) => {
-    toast((t) => (
-      <div className="flex flex-col gap-3">
-        <p className="text-sm font-medium text-zinc-900">
-          Hapus <span className="font-bold">{name}</span> dari daftar?
+  // --- 4. Hapus Data (PERBAIKAN LOGIC & UI KONFIRMASI) ---
+  const deleteCity = (id: number, name: string) => {
+    toast.custom((t) => (
+      <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} bg-[#111111] border border-white/5 p-6 rounded-3xl shadow-2xl flex flex-col items-center min-w-[320px]`}>
+        <p className="text-white text-sm font-bold mb-6 text-center leading-relaxed">
+          Apakah kamu ingin menghapus kota <br/>
+          <span className="text-red-600">"{name}"</span> secara permanen?
         </p>
-        <div className="flex gap-2">
-          <button 
+        <div className="flex gap-3">
+          <button
             onClick={async () => {
               toast.dismiss(t.id);
               const delToast = toast.loading("Menghapus...");
               try {
+                // Eksekusi API Delete
                 const { error } = await (api.api.cities as any)[Number(id)].delete();
                 if (error) throw new Error();
+                
+                // CRITICAL: Update state lokal supaya langsung hilang tanpa refresh!
+                setCities((prev) => prev.filter(city => city.cityId !== id));
+                
                 toast.success("Kota berhasil dihapus", { id: delToast });
-                fetchCities();
-              } catch {
+              } catch (err) {
                 toast.error("Gagal menghapus kota", { id: delToast });
               }
             }}
-            className="bg-red-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-red-700 transition-colors"
+            className="bg-[#cc111f] text-white px-8 py-2 rounded-full text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all"
           >
-            Ya, Hapus
+            Hapus
           </button>
-          <button onClick={() => toast.dismiss(t.id)} className="bg-zinc-200 text-zinc-800 px-4 py-2 rounded-lg text-xs font-bold hover:bg-zinc-300 transition-colors">
+          <button
+            onClick={() => toast.dismiss(t.id)}
+            className="bg-[#222222] text-zinc-400 px-8 py-2 rounded-full text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all"
+          >
             Batal
           </button>
         </div>
       </div>
-    ), { duration: 5000, position: 'top-center' });
+    ), { position: 'top-center', duration: 4000 });
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-5xl mx-auto pb-20">
+    <div className="p-6 lg:p-10 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-5xl mx-auto pb-20">
+      <Toaster />
       
       {/* 1. HEADER & STATISTICS */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-zinc-800/50 pb-8">
         <div className="space-y-1">
           <h1 className={`${anton.className} text-5xl text-white tracking-tight`}>
             OPERATIONAL <span className="text-[#cc111f]">CITIES</span>
@@ -145,7 +153,6 @@ export default function CitiesPage() {
 
       {/* 2. ACTION BAR (INPUT & SEARCH) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Form Add */}
         <form onSubmit={addCity} className="lg:col-span-7 bg-[#121212] border border-zinc-800/50 p-2 rounded-[22px] flex flex-col sm:flex-row gap-2 shadow-2xl">
           <div className="relative flex-1 group">
             <MapIcon className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-[#cc111f] transition-colors" />
@@ -161,13 +168,12 @@ export default function CitiesPage() {
           <button 
             type="submit"
             disabled={loading || !newCityName.trim()}
-            className="bg-[#cc111f] hover:bg-[#a80e19] disabled:opacity-50 disabled:hover:bg-[#cc111f] text-white flex items-center justify-center gap-2 px-8 py-3 sm:py-0 rounded-xl transition-all active:scale-95 font-bold text-xs shadow-lg shadow-red-900/20"
+            className="bg-[#cc111f] hover:bg-[#a80e19] disabled:opacity-50 text-white flex items-center justify-center gap-2 px-8 py-3 sm:py-0 rounded-xl transition-all active:scale-95 font-bold text-xs shadow-lg shadow-red-900/20"
           >
             {loading ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <><PlusIcon className="w-4 h-4 stroke-[3px]" /> Add Location</>}
           </button>
         </form>
 
-        {/* Search Field */}
         <div className="lg:col-span-5 bg-zinc-900/30 border border-zinc-800/50 p-2 rounded-[22px] flex items-center shadow-xl">
            <div className="relative w-full group">
             <MagnifyingGlassIcon className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-white transition-colors" />
@@ -194,17 +200,6 @@ export default function CitiesPage() {
                 <InboxIcon className="w-10 h-10 text-zinc-700" />
               </div>
               <p className="text-zinc-400 font-bold text-lg">Kota Tidak Ditemukan</p>
-              <p className="text-zinc-600 text-sm max-w-[250px] text-center mt-2">
-                {searchQuery ? `Tidak ada hasil untuk "${searchQuery}"` : "Daftar kota operasional masih kosong."}
-              </p>
-              {searchQuery && (
-                <button 
-                  onClick={() => setSearchQuery("")}
-                  className="mt-6 text-[#cc111f] text-xs font-bold uppercase tracking-widest hover:underline"
-                >
-                  Clear Search
-                </button>
-              )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -240,21 +235,17 @@ export default function CitiesPage() {
         )}
       </div>
 
-      {/* Custom Styles */}
       <style jsx global>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
+        @keyframes enter {
+          from { transform: translateY(-20px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
+        @keyframes leave {
+          from { transform: translateY(0); opacity: 1; }
+          to { transform: translateY(-20px); opacity: 0; }
         }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #1f1f23;
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #cc111f;
-        }
+        .animate-enter { animation: enter 0.3s ease-out; }
+        .animate-leave { animation: leave 0.3s ease-in forwards; }
       `}</style>
     </div>
   );
