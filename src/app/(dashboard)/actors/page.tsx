@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { anton } from "@/lib/fonts";
 import {
   UserPlusIcon,
@@ -12,15 +12,18 @@ import {
   LinkIcon,
   UserIcon,
   PhotoIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/outline";
 import { actorService } from "@/services/actorService";
+import toast, { Toaster } from "react-hot-toast";
 
-// --- SKELETON COMPONENT ---
+// --- SKELETON COMPONENT (Disesuaikan dengan desain kartu) ---
 const ActorSkeleton = () => (
-  <div className="bg-[#0f0f0f] border border-zinc-900 rounded-[2rem] p-4 animate-pulse">
+  <div className="bg-[#0f0f0f] border border-zinc-900 rounded-[2rem] p-3 animate-pulse">
     <div className="aspect-[4/5] w-full bg-zinc-800 rounded-[1.5rem] mb-4" />
-    <div className="h-4 w-3/4 bg-zinc-800 rounded mx-auto" />
+    <div className="h-3 bg-zinc-800 rounded w-2/3 mx-auto" />
   </div>
 );
 
@@ -29,6 +32,10 @@ export default function ActorsPage() {
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 12; // 2 baris x 6 kolom (pada layar XL)
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedActor, setSelectedActor] = useState<any>(null);
@@ -46,9 +53,10 @@ export default function ActorsPage() {
       const data = await actorService.getAll();
       setActors(data);
     } catch (err) {
-      console.error("Failed to load actors", err);
+      toast.error("Gagal memuat data talent");
     } finally {
-      setTimeout(() => setLoading(false), 500);
+      // Memberikan efek transisi loading yang halus
+      setTimeout(() => setLoading(false), 600);
     }
   }, []);
 
@@ -56,9 +64,23 @@ export default function ActorsPage() {
     loadActors();
   }, [loadActors]);
 
-  const filteredActors = actors.filter((a) =>
-    a.actorName?.toLowerCase().includes(searchTerm.toLowerCase()),
+  // --- Logic Filtering & Pagination ---
+  const filteredActors = useMemo(() => {
+    return actors.filter((a) =>
+      a.actorName?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [actors, searchTerm]);
+
+  const totalPages = Math.ceil(filteredActors.length / itemsPerPage);
+  const currentData = filteredActors.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
   );
+
+  // Reset ke halaman 1 saat mencari
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
 
   const handleOpenModal = (actor?: any) => {
     if (actor) {
@@ -77,34 +99,55 @@ export default function ActorsPage() {
   const handleSaveActor = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsProcessing(true);
+    const t = toast.loading(selectedActor ? "Memperbarui talent..." : "Menambah talent...");
+    
     try {
       if (selectedActor) {
         await actorService.update(
           selectedActor.actorId,
           actorForm.actor_name,
-          actorForm.photo_url,
+          actorForm.photo_url
         );
       } else {
         await actorService.create(actorForm.actor_name, actorForm.photo_url);
       }
+      toast.success("Data berhasil disimpan", { id: t });
       setIsModalOpen(false);
       loadActors();
     } catch (err) {
-      alert("Gagal menyimpan data aktor.");
+      toast.error("Terjadi kesalahan saat menyimpan", { id: t });
     } finally {
       setIsProcessing(false);
     }
   };
 
   const handleDeleteActor = async (id: number) => {
-    if (confirm("Hapus data aktor ini permanen?")) {
-      try {
-        await actorService.delete(id);
-        loadActors();
-      } catch (err) {
-        alert("Gagal menghapus aktor");
-      }
-    }
+    toast((t) => (
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-white">Hapus talent ini secara permanen?</p>
+        <div className="flex gap-2">
+          <button
+            onClick={async () => {
+              toast.dismiss(t.id);
+              const l = toast.loading("Menghapus...");
+              try {
+                await actorService.delete(id);
+                toast.success("Talent dihapus", { id: l });
+                loadActors();
+              } catch {
+                toast.error("Gagal menghapus", { id: l });
+              }
+            }}
+            className="bg-red-600 text-white px-3 py-1 rounded-lg text-xs font-bold"
+          >
+            Hapus
+          </button>
+          <button onClick={() => toast.dismiss(t.id)} className="bg-zinc-800 text-white px-3 py-1 rounded-lg text-xs font-bold">
+            Batal
+          </button>
+        </div>
+      </div>
+    ), { style: { background: "#0a0a0a", border: "1px solid #27272a" } });
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -116,12 +159,14 @@ export default function ActorsPage() {
   };
 
   return (
-    <div className="p-8 space-y-10 animate-in fade-in duration-700 max-w-[1400px] mx-auto">
+    <div className="p-8 space-y-10 animate-in fade-in duration-700 max-w-[1400px] mx-auto min-h-screen">
+      <Toaster position="top-center" />
+      
       {/* Header Section */}
       <div className="flex flex-col lg:flex-row justify-between items-center gap-8">
         <div className="space-y-2 text-center lg:text-left">
-          <h1 className={`${anton.className} text-5xl text-white italic tracking-tight`}>
-            Talent Database
+          <h1 className={`${anton.className} text-5xl text-white italic tracking-tight uppercase leading-none`}>
+            Talent <span className="text-[#cc111f]">Database</span>
           </h1>
           <p className="text-zinc-500 text-sm font-medium italic">
             Kelola daftar aktor dan aktris dalam ekosistem produksi RPlay Cinema.
@@ -141,10 +186,10 @@ export default function ActorsPage() {
           </div>
           <button
             onClick={() => handleOpenModal()}
-            className="bg-white hover:bg-[#cc111f] hover:text-white flex items-center justify-center gap-2 px-8 h-[52px] rounded-2xl transition-all shadow-xl active:scale-95 text-black font-bold text-xs"
+            className="bg-white hover:bg-[#cc111f] hover:text-white flex items-center justify-center gap-2 px-8 h-[52px] rounded-2xl transition-all shadow-xl active:scale-95 text-black font-bold text-xs uppercase tracking-widest"
           >
             <UserPlusIcon className="w-4 h-4 stroke-[3px]" />
-            Add New Talent
+            Tambah Talent
           </button>
         </div>
       </div>
@@ -153,8 +198,8 @@ export default function ActorsPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
         {loading ? (
           Array(12).fill(0).map((_, i) => <ActorSkeleton key={i} />)
-        ) : filteredActors.length > 0 ? (
-          filteredActors.map((actor) => (
+        ) : currentData.length > 0 ? (
+          currentData.map((actor) => (
             <div
               key={actor.actorId}
               className="group relative bg-[#0f0f0f] border border-zinc-900 rounded-[2rem] p-3 text-center hover:border-[#cc111f]/30 hover:bg-[#121212] transition-all duration-300"
@@ -195,17 +240,39 @@ export default function ActorsPage() {
         ) : (
           <div className="col-span-full py-24 border-2 border-dashed border-zinc-900 rounded-[3rem] flex flex-col items-center justify-center opacity-30">
             <UserIcon className="w-12 h-12 mb-4 text-zinc-500" />
-            <p className="text-xs font-bold italic text-zinc-500">No talent found in database</p>
+            <p className="text-xs font-bold italic text-zinc-500">Talent tidak ditemukan</p>
           </div>
         )}
       </div>
 
-      {/* --- MODAL ADD/EDIT ACTOR (COMPACT VERSION) --- */}
+      {/* Pagination Controls */}
+      {!loading && totalPages > 1 && (
+        <div className="flex items-center justify-center gap-6 pt-6">
+          <button
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage(prev => prev - 1)}
+            className="p-3 bg-zinc-900 border border-zinc-800 rounded-2xl disabled:opacity-20 hover:border-[#cc111f]/50 transition-all"
+          >
+            <ChevronLeftIcon className="w-5 h-5 text-white" />
+          </button>
+          <div className="text-sm font-bold text-zinc-500 italic">
+            Halaman <span className="text-white">{currentPage}</span> / {totalPages}
+          </div>
+          <button
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage(prev => prev + 1)}
+            className="p-3 bg-zinc-900 border border-zinc-800 rounded-2xl disabled:opacity-20 hover:border-[#cc111f]/50 transition-all"
+          >
+            <ChevronRightIcon className="w-5 h-5 text-white" />
+          </button>
+        </div>
+      )}
+
+      {/* --- MODAL ADD/EDIT --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-[#0a0a0a] w-full max-w-sm rounded-[2rem] border border-zinc-800 shadow-2xl relative modal-scale-animation">
             
-            {/* Modal Header */}
             <div className="px-6 py-5 border-b border-zinc-900 flex justify-between items-center">
               <h2 className={`${anton.className} text-2xl text-white italic tracking-tight`}>
                 {selectedActor ? 'Update Talent' : 'New Talent'}
@@ -219,7 +286,6 @@ export default function ActorsPage() {
             </div>
 
             <form onSubmit={handleSaveActor} className="p-6 space-y-5">
-              {/* Image Preview Area */}
               <div className="relative aspect-video w-full rounded-2xl border border-zinc-800 overflow-hidden bg-zinc-950">
                 {actorForm.photo_url ? (
                   <img
@@ -235,14 +301,13 @@ export default function ActorsPage() {
                 )}
               </div>
 
-              {/* Form Inputs */}
               <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-500 ml-1 uppercase tracking-widest">Full Name</label>
+                  <label className="text-[10px] font-bold text-zinc-500 ml-1 uppercase tracking-widest">Nama Lengkap</label>
                   <input
                     type="text"
                     className="admin-input-compact"
-                    placeholder="e.g. Keanu Reeves"
+                    placeholder="Contoh: Keanu Reeves"
                     value={actorForm.actor_name}
                     onChange={(e) => setActorForm({ ...actorForm, actor_name: e.target.value })}
                     required
@@ -254,16 +319,16 @@ export default function ActorsPage() {
                     <button
                       type="button"
                       onClick={() => setUploadTab("url")}
-                      className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${uploadTab === "url" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-600 hover:text-zinc-400"}`}
+                      className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${uploadTab === "url" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-600"}`}
                     >
-                      URL
+                      URL LINK
                     </button>
                     <button
                       type="button"
                       onClick={() => setUploadTab("local")}
-                      className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${uploadTab === "local" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-600 hover:text-zinc-400"}`}
+                      className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${uploadTab === "local" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-600"}`}
                     >
-                      LOCAL
+                      FILE LOKAL
                     </button>
                   </div>
 
@@ -273,7 +338,7 @@ export default function ActorsPage() {
                       <input
                         type="text"
                         className="admin-input-compact !pl-10"
-                        placeholder="https://example.com/photo.jpg"
+                        placeholder="https://image-link.com/photo.jpg"
                         value={actorForm.photo_url}
                         onChange={(e) => setActorForm({ ...actorForm, photo_url: e.target.value })}
                       />
@@ -284,7 +349,7 @@ export default function ActorsPage() {
                       className="cursor-pointer bg-zinc-950 border border-dashed border-zinc-800 py-4 rounded-xl flex flex-col items-center hover:border-[#cc111f]/30 transition-all"
                     >
                       <CloudArrowUpIcon className="w-6 h-6 text-zinc-700 mb-1" />
-                      <span className="text-[10px] font-bold text-zinc-600">Upload from local</span>
+                      <span className="text-[10px] font-bold text-zinc-600">Pilih dari perangkat</span>
                       <input
                         type="file"
                         ref={fileInputRef}
@@ -300,9 +365,9 @@ export default function ActorsPage() {
               <button
                 type="submit"
                 disabled={isProcessing}
-                className="w-full bg-white text-black hover:bg-[#cc111f] hover:text-white h-[48px] rounded-xl font-bold text-[11px] tracking-widest transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full bg-[#cc111f] text-white hover:bg-white hover:text-black h-[48px] rounded-xl font-bold text-[11px] tracking-widest transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 uppercase"
               >
-                {isProcessing ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : "SAVE PROFILE"}
+                {isProcessing ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : "Simpan Talent"}
               </button>
             </form>
           </div>
@@ -312,9 +377,9 @@ export default function ActorsPage() {
       <style jsx global>{`
         .admin-input-modern {
           width: 100%;
-          background: #111;
-          border: 1px solid #1f1f23;
-          border-radius: 1rem;
+          background: #09090b;
+          border: 1px solid #18181b;
+          border-radius: 1.25rem;
           padding: 0.75rem 1.25rem;
           color: white;
           outline: none;
@@ -326,8 +391,8 @@ export default function ActorsPage() {
         }
         .admin-input-compact {
           width: 100%;
-          background: #111;
-          border: 1px solid #1f1f23;
+          background: #09090b;
+          border: 1px solid #18181b;
           border-radius: 0.75rem;
           padding: 0.65rem 1rem;
           color: white;
@@ -337,13 +402,12 @@ export default function ActorsPage() {
         }
         .admin-input-compact:focus {
           border-color: #cc111f;
-          background: #000;
         }
         .modal-scale-animation {
-          animation: modal-zoom 0.2s ease-out;
+          animation: modal-zoom 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
         @keyframes modal-zoom {
-          from { transform: scale(0.97); opacity: 0; }
+          from { transform: scale(0.95); opacity: 0; }
           to { transform: scale(1); opacity: 1; }
         }
       `}</style>
