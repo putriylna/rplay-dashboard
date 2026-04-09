@@ -3,29 +3,32 @@ import { api } from "@/lib/api";
 export interface CreateScheduleDTO {
   movie_id: number;
   studio_id: number;
-  show_dates: string[]; // Digunakan untuk create (multiple)
-  show_times: string[]; // Digunakan untuk create (multiple)
+  show_dates: string[]; // Batch create menggunakan array
+  show_times: string[]; // Batch create menggunakan array
   price: number;
 }
 
-// Interface khusus untuk UPDATE (Single schedule)
+/**
+ * Interface khusus Update
+ * Backend biasanya memproses ID spesifik untuk satu slot waktu/tanggal tertentu.
+ */
 export interface UpdateScheduleDTO {
   movie_id: number;
   studio_id: number;
-  show_date: string; // Backend biasanya minta string tunggal
-  show_time: string; // Backend biasanya minta string tunggal
+  show_date: string; // Tunggal
+  show_time: string; // Tunggal
   price: number;
 }
 
 export const scheduleService = {
-  // Ambil semua jadwal
+  // 1. Ambil semua jadwal
   getAll: async () => {
     const { data, error } = await api.api.schedules.get();
     if (error) throw new Error("Gagal mengambil daftar jadwal");
     return data;
   },
 
-  // Simpan jadwal baru (Batch Create)
+  // 2. Simpan jadwal baru (Batch Create)
   create: async (payload: CreateScheduleDTO) => {
     const { data, error } = await api.api.schedules.post(payload);
     if (error) {
@@ -36,15 +39,14 @@ export const scheduleService = {
   },
 
   /**
-   * UPDATE JADWAL
-   * Mengirimkan data tunggal (bukan array) ke endpoint /schedules/:id
+   * 3. UPDATE JADWAL
+   * Pastikan id dikonversi ke string saat mengakses segment Eden
    */
-  update: async (id: number, payload: UpdateScheduleDTO) => {
-    // Casting 'as any' digunakan karena struktur Eden/Elysia dinamis pada segment [id]
-    const { data, error } = await (api.api.schedules as any)[id].put(payload);
+  update: async (id: number | string, payload: UpdateScheduleDTO) => {
+    // Gunakan id.toString() untuk keamanan segment URL pada Elysia/Eden
+    const { data, error } = await (api.api.schedules as any)[id.toString()].put(payload);
     
     if (error) {
-      // Menangkap pesan error spesifik (misal: "Studio sudah terisi")
       const errMsg = (error.value as any)?.error || "Gagal memperbarui jadwal";
       throw new Error(errMsg);
     }
@@ -52,9 +54,9 @@ export const scheduleService = {
     return data;
   },
 
-  // Hapus jadwal
-  delete: async (id: number) => {
-    const { data, error } = await (api.api.schedules as any)[id].delete();
+  // 4. Hapus jadwal
+  delete: async (id: number | string) => {
+    const { data, error } = await (api.api.schedules as any)[id.toString()].delete();
     if (error) throw new Error("Gagal menghapus jadwal");
     return data;
   }
