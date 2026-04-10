@@ -8,7 +8,6 @@ import {
   CloudArrowUpIcon,
   CheckCircleIcon,
   Squares2X2Icon,
-  UserGroupIcon,
   TicketIcon,
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
@@ -31,7 +30,6 @@ export default function SeatConfigPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentStudioType, setCurrentStudioType] = useState<string>("");
 
-  // Fitur Bulk State
   const [allStudios, setAllStudios] = useState<any[]>([]);
   const [selectedStudioIds, setSelectedStudioIds] = useState<number[]>([]);
 
@@ -45,8 +43,9 @@ export default function SeatConfigPage() {
   };
 
   const currentLimit = SEAT_LIMITS[currentStudioType] || 200;
-  const currentTotal = rows * cols;
-  const isOverLimit = currentTotal > currentLimit;
+  // Kursi aktif = Total kotak - jumlah yang di-disable (dihapus)
+  const activeTotal = (rows * cols) - disabledSeats.size;
+  const isOverLimit = activeTotal > currentLimit;
 
   useEffect(() => {
     const initData = async () => {
@@ -74,10 +73,18 @@ export default function SeatConfigPage() {
           setRows(maxRowIndex + 1);
           setCols(maxCol);
           
-          const inactive = new Set<string>(
-            seatData.filter((s: any) => s.status === 'INACTIVE').map((s: any) => `${s.rowName}${s.seatNumber}`)
-          );
-          setDisabledSeats(inactive);
+          // Sinkronisasi: Tandai kursi yang tidak ada di DB sebagai disabled di UI
+          // (Karena DB hanya menyimpan kursi yang aktif)
+          const dbSeatNames = new Set(seatData.map((s: any) => `${s.rowName}${s.seatNumber}`));
+          const initialDisabled = new Set<string>();
+          
+          for (let r = 0; r <= maxRowIndex; r++) {
+            for (let c = 1; c <= maxCol; c++) {
+              const name = `${alphabet[r]}${c}`;
+              if (!dbSeatNames.has(name)) initialDisabled.add(name);
+            }
+          }
+          setDisabledSeats(initialDisabled);
         }
         setSelectedStudioIds([studioId]);
       } catch (err) {
@@ -94,12 +101,25 @@ export default function SeatConfigPage() {
     if (selectedStudioIds.length === 0) return toast.error("Pilih minimal satu studio");
     
     setIsSaving(true);
+
+    // Filter hanya kursi yang TIDAK di-disable
+    const activeSeatsPayload = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 1; c <= cols; c++) {
+        const seatId = `${alphabet[r]}${c}`;
+        if (!disabledSeats.has(seatId)) {
+          activeSeatsPayload.push({
+            rowName: alphabet[r],
+            seatNumber: c.toString()
+          });
+        }
+      }
+    }
+
     const promises = selectedStudioIds.map(sid => 
       api.api.studios.seats.generate.post({
         studio_id: sid,
-        row_count: rows,
-        seats_per_row: cols,
-        inactive_seats: Array.from(disabledSeats) 
+        seats: activeSeatsPayload // Mengirim array kursi aktif saja
       })
     );
 
@@ -107,7 +127,7 @@ export default function SeatConfigPage() {
       loading: `Menyinkronkan ${selectedStudioIds.length} Studio...`,
       success: () => {
         setIsSaving(false);
-        return `Arsitektur ${currentStudioType} berhasil diterapkan!`;
+        return `Arsitektur ${currentStudioType} berhasil diterapkan dengan ${activeTotal} kursi!`;
       },
       error: () => {
         setIsSaving(false);
@@ -149,7 +169,7 @@ export default function SeatConfigPage() {
           <div className="flex items-center gap-2 pt-2">
             <TicketIcon className="w-4 h-4 text-zinc-600" />
             <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-              Editing Template: <span className={isOverLimit ? "text-red-500" : "text-white"}>{currentStudioType}</span>
+              Template: <span className="text-white">{currentStudioType}</span>
             </span>
           </div>
         </div>
@@ -157,11 +177,11 @@ export default function SeatConfigPage() {
         <div className={`flex items-center gap-4 bg-zinc-900/40 p-3 rounded-2xl border ${isOverLimit ? 'border-red-500/50' : 'border-zinc-700/30'} shadow-2xl backdrop-blur-xl transition-colors`}>
           <div className="flex items-center gap-6 px-4 border-r border-zinc-800/60">
             <div className="flex flex-col">
-              <span className="text-[9px] text-zinc-500 font-bold mb-1 uppercase tracking-tighter text-center">Rows</span>
+              <span className="text-[9px] text-zinc-500 font-bold mb-1 uppercase text-center">Rows</span>
               <input type="number" min="1" max="26" value={rows} onChange={(e) => setRows(Number(e.target.value))} className="bg-zinc-800/50 text-white font-black w-12 h-9 rounded-lg text-center outline-none border border-zinc-700/50 focus:border-[#cc111f] transition-colors" />
             </div>
             <div className="flex flex-col">
-              <span className="text-[9px] text-zinc-500 font-bold mb-1 uppercase tracking-tighter text-center">Cols</span>
+              <span className="text-[9px] text-zinc-500 font-bold mb-1 uppercase text-center">Cols</span>
               <input type="number" min="1" max="30" value={cols} onChange={(e) => setCols(Number(e.target.value))} className="bg-zinc-800/50 text-white font-black w-12 h-9 rounded-lg text-center outline-none border border-zinc-700/50 focus:border-[#cc111f] transition-colors" />
             </div>
           </div>
@@ -169,7 +189,7 @@ export default function SeatConfigPage() {
           <Button 
             onClick={handleSaveLayout} 
             disabled={isSaving || isOverLimit} 
-            className={`${isOverLimit ? 'bg-zinc-800 cursor-not-allowed' : 'bg-[#cc111f] hover:bg-white hover:text-black'} text-white py-3 px-8 rounded-xl flex items-center gap-3 transition-all active:scale-95 disabled:opacity-50 shadow-lg`}
+            className={`${isOverLimit ? 'bg-zinc-800 cursor-not-allowed opacity-50' : 'bg-[#cc111f] hover:bg-white hover:text-black'} text-white py-3 px-8 rounded-xl flex items-center gap-3 transition-all active:scale-95 shadow-lg`}
           >
             {isSaving ? <ArrowPathIcon className="w-5 h-5 animate-spin" /> : <CloudArrowUpIcon className="w-5 h-5 stroke-[2.5]" />}
             <span className="font-bold text-sm uppercase tracking-widest">Deploy Architecture</span>
@@ -179,27 +199,24 @@ export default function SeatConfigPage() {
 
       <div className="grid lg:grid-cols-12 gap-10">
         
-        {/* TARGET SELECTOR & STATS */}
+        {/* SIDEBAR STATS */}
         <div className="lg:col-span-3 space-y-4">
-          {/* Warning Card if Over Limit */}
           {isOverLimit && (
-            <div className="bg-red-500/10 border border-red-500/50 p-4 rounded-2xl flex items-start gap-3 animate-bounce">
+            <div className="bg-red-500/10 border border-red-500/50 p-4 rounded-2xl flex items-start gap-3 animate-pulse">
               <ExclamationTriangleIcon className="w-5 h-5 text-red-500 shrink-0" />
               <p className="text-[10px] font-bold text-red-200 uppercase leading-relaxed">
-                Kapasitas melebihi batas {currentStudioType} ({currentLimit} Kursi). Kurangi Baris/Kolom!
+                Kapasitas melebihi batas {currentStudioType} ({currentLimit} Kursi). Matikan beberapa kursi atau kurangi dimensi!
               </p>
             </div>
           )}
 
           <div className="bg-zinc-900/40 border border-zinc-800/60 p-6 rounded-[2.5rem] shadow-xl backdrop-blur-sm">
-            <div className="flex items-center justify-between mb-6">
-               <div className="flex items-center gap-2">
-                 <Squares2X2Icon className="w-4 h-4 text-[#cc111f]" />
-                 <h3 className="text-[10px] font-black text-white tracking-widest uppercase">Target {currentStudioType}</h3>
-               </div>
-            </div>
+             <div className="flex items-center gap-2 mb-6">
+                <Squares2X2Icon className="w-4 h-4 text-[#cc111f]" />
+                <h3 className="text-[10px] font-black text-white tracking-widest uppercase">Target Studios</h3>
+             </div>
             
-            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="space-y-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
               {allStudios.map((s) => (
                 <div key={s.studioId} className="flex items-center justify-between p-4 rounded-2xl border bg-zinc-900/40 border-zinc-800/60 text-zinc-400">
                   <div className="flex flex-col">
@@ -212,10 +229,10 @@ export default function SeatConfigPage() {
             </div>
           </div>
           
-          <div className={`bg-gradient-to-br ${isOverLimit ? 'from-red-900/40 to-black border-red-500' : 'from-zinc-900/80 to-black border-zinc-800'} border p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden transition-colors`}>
-            <p className="text-zinc-500 text-[10px] font-bold tracking-[0.2em] mb-2 uppercase italic">Blueprint Capacity</p>
+          <div className={`bg-gradient-to-br ${isOverLimit ? 'from-red-900/40 to-black border-red-500' : 'from-zinc-900/80 to-black border-zinc-800'} border p-8 rounded-[2.5rem] shadow-2xl transition-colors`}>
+            <p className="text-zinc-500 text-[10px] font-bold tracking-[0.2em] mb-2 uppercase italic">Active Capacity</p>
             <div className={`text-6xl font-black italic ${isOverLimit ? 'text-red-500' : 'text-white'}`}>
-              {currentTotal}
+              {activeTotal}
               <span className="text-lg text-[#cc111f] not-italic ml-2">/ {currentLimit}</span>
             </div>
           </div>
@@ -223,14 +240,15 @@ export default function SeatConfigPage() {
 
         {/* BLUEPRINT CANVAS */}
         <div className="lg:col-span-9 bg-zinc-950 rounded-[4rem] p-16 border border-zinc-800/40 relative overflow-hidden">
-          {/* SCREEN */}
+          {/* SCREEN VISUAL */}
           <div className="w-full max-w-2xl mx-auto mb-20 text-center relative">
             <div className="w-full h-[6px] bg-zinc-900 rounded-full overflow-hidden">
               <div className="w-full h-full bg-gradient-to-r from-transparent via-[#cc111f] to-transparent animate-pulse shadow-[0_0_20px_rgba(204,17,31,0.5)]"></div>
             </div>
+            <p className="text-[9px] text-zinc-700 font-black tracking-[0.4em] mt-4 uppercase">Cinema Screen</p>
           </div>
 
-          {/* GRID */}
+          {/* GRID ENGINE */}
           <div className="w-full overflow-x-auto pb-10 custom-scrollbar flex justify-center">
             <div 
               className="grid gap-3 p-4" 
@@ -249,15 +267,19 @@ export default function SeatConfigPage() {
                       <button 
                         key={seatId} 
                         onClick={() => toggleSeat(seatId)}
+                        title={seatId}
                         className={`group relative w-10 h-10 rounded-xl flex items-center justify-center transition-all border-2 ${
                           isDisabled 
-                          ? 'bg-transparent border-dashed border-zinc-900' 
-                          : isOverLimit 
-                            ? 'bg-red-500/10 border-red-500/20' 
-                            : 'bg-zinc-900 border-zinc-800 hover:border-[#cc111f]'
+                          ? 'bg-transparent border-dashed border-zinc-900 opacity-20 hover:opacity-100 hover:border-zinc-700' 
+                          : 'bg-zinc-900 border-zinc-800 hover:border-[#cc111f] shadow-lg shadow-black/50'
                         }`}
                       >
-                        {!isDisabled && <span className="text-[10px] font-black text-zinc-600 group-hover:text-white">{c + 1}</span>}
+                        {!isDisabled && (
+                          <span className="text-[10px] font-black text-zinc-600 group-hover:text-white transition-colors">
+                            {c + 1}
+                          </span>
+                        )}
+                        {isDisabled && <div className="w-1 h-1 bg-zinc-800 rounded-full" />}
                       </button>
                     );
                   })}

@@ -2,7 +2,6 @@ import { edenTreaty } from '@elysiajs/eden'
 import type { App } from '../types/api-schema' 
 
 export const api = edenTreaty<App>(process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080', {
-
     fetcher: (url, options) => {
         let token = null;
         if (typeof window !== 'undefined') {
